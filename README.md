@@ -1,6 +1,6 @@
 Work in progress; a library for working with hidden Markov processes. This is
 a literate program, and as such the code should be considered the primary
-source of documentation. Start [here](gh-hmm), or see [here](gh-clinic) for
+source of documentation. Start [here][gh-hmm], or see [here][gh-clinic] for
 a usage example.
 
   [gh-hmm]: https://github.com/fmap/markov/blob/master/src/AI/Markov/HMM.lhs
