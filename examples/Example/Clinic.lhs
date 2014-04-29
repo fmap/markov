@@ -1,6 +1,6 @@
 > {-# LANGUAGE LambdaCase #-}
 >
-> module Example.Clinic (clinic, Health(..), Symptom(..)) where
+> module Example.Clinic (clinic, Health(..), Symptom(..), generator) where
 >
 > import AI.Markov.HMM (HMM(..), observe)
 > import System.Random (StdGen(..))
@@ -69,5 +69,5 @@ Our parametrised HMM can be used to generate an observation sequence, using
 the three comprising distributions. This is an infinite list, contextually
 representing symptoms likely to be reported over a sequence of visits:
 
-> choose :: HMM Health Symptom -> [Symptom]
-> choose = observe seed
+> generator :: HMM Health Symptom -> [Symptom]
+> generator = observe seed
