@@ -2,5 +2,5 @@
 , src ? ./.
 }:
 {
-  build = pkgs.haskellPackages.buildLocalCabal src "hmm";
+  build = pkgs.haskellPackages.buildLocalCabal src "markov";
 }
