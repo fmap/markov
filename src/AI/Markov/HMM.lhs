@@ -1,8 +1,14 @@
-> {-# LANGUAGE RecordWildCards #-}
+> {-# LANGUAGE RecordWildCards, ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
 >
-> module AI.Markov.HMM (HMM(..), observe) where
+> module AI.Markov.HMM (HMM(..), observe, evaluate) where
 >
-> import Data.Distribution (Distribution(..), (<~~))
+> import Control.Applicative ((<$>))
+> import Control.Monad (forM)
+> import Data.Bifunctor (Bifunctor(first))
+> import Data.Distribution (Distribution(..), Probability, (<?), (?>), (<~~))
+> import Data.Function.Memoize (Memoizable(..), deriveMemoize, deriveMemoizable, memoize4)
+> import Data.List.Extras (pairs)
+> import Data.Ratio (Ratio)
 > import System.Random (RandomGen(..))
 > import System.Random.Extras (split3)
 
@@ -75,7 +81,105 @@ Rabiner [^rabiner1989] outlined three fundamental inference problems for HMMs:
   1. Evaluation: given a model and a sequence of observations, compute the
      likelihood those observations were produced by that HMM. This can also be
      interpreted as a scoring problem -- given a sequence produced by the real
-     signal source, how well does the HMM model its behaviour?
+     signal source, we can compare the accuracy of models.
+
+We first consider a straightforward (albeit intractable) approach;
+computing the likelihood our observations were produced by each possible
+state sequence (of appropriate length), and summing the result
+probabilities. I.e: $$P(O|HMM)=\sum_{j=0}^{n}P(O|I_n,HMM)P(I_n|HMM)$$
+
+First, some precursors; given a set of states, `sequencesOfN` finds all
+$n$-length state sequences:
+
+> sequencesOfN :: Int -> HMM state symbol -> [[state]]
+> sequencesOfN n = sequence . replicate n . states
+
+`sequenceP` determines the likelihood of a state sequence, given a model;
+$P(I|HMM)=P(i_1)P(i_2|i_1)\ldots P(i_r|i_{r-1})$:
+
+> sequenceP :: Eq state => HMM state symbol -> [state] -> Probability
+> sequenceP HMM{..} sequence = product 
+>                            $ head sequence <? start 
+>                            : map (uncurry (<?) . fmap transition) (pairs sequence)
+
+`sequenceObservationsP` computes the likelihood of some state sequence 
+and an observation sequence co-occuring; $P(O|I, HMM)=P(O_1|i_1)P(O_2|i_2) 
+\ldots P(O_n|i_n)$:
+
+> sequenceObservationsP :: Eq symbol => HMM state symbol -> [(state, symbol)] -> Probability
+> sequenceObservationsP HMM{..} = product . map (uncurry (?>) . first emission)
+
+Using the above primitives, we can now express the procedure:
+
+> inefficientEvaluate :: (Eq state, Eq symbol) => HMM state symbol -> [symbol] -> Probability
+> inefficientEvaluate hmm observations = sum $ zipWith (*) statesP statesObsP
+>   where states     = sequencesOfN (length observations) hmm
+>         statesP    = sequenceP hmm <$> states
+>         statesObsP = sequenceObservationsP hmm <$> map (`zip` observations) states
+
+But this has abysmal runtime-performance! Let $N$ be the number of
+states, and $T$ $T$ equal to the number of observations (and thus the
+length of each state sequence); there are thus $N^T$ possible state
+sequences, and for each sequence we require about $2T$ calculations 
+(Rabiner's [^rabiner1989] figure, I haven't validated this); meaning 
+$2TN^T$ calculations in total: 
+  
+  $N$   $T$   $2TN^T$
+  ----  ----  ------------------
+  5     100   $\approx 10^{72}$
+  10    100   $\approx 10^{102}$
+  15    100   $\approx 10^{120}$
+
+Given this profile, this function is only included here for didactic
+purposes, and is not exported by this module.
+
+A more efficient solution exists in the _forward algorithm_, which
+arranges the computation so that redundant calculations may be cached: 
+
+Given a partial observation sequence $\bold{O} = {O_1,O_2,\ldots,O_n}$ and
+a terminal state $T$, the _forward variable_ provides the likelihood of 
+being in state $T$ after time $n$, having observed $\bold{O}$ --
+$\alpha_n(T) = P(O_1,O_2,\ldots,O_n,I_n=T|HMM)$:
+
+> forwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> forwardVariable' 0 HMM{..} observations state = (state <? start) * (head observations <? emission state)
+> forwardVariable' t hmm@HMM{..} observations state = (*) (observations !! t <? emission state) . sum $ do
+>   predecessor <- states
+>   let a = forwardVariable (t-1) hmm observations predecessor
+>   let b = (state <? transition predecessor)
+>   return $ a * b
+
+Below, we compute the terminal forward variable for each state in the HMM,
+using a constant set of observations. As the computation of `a` is independent
+of the state under consideration, it's time-saving to memoise this value:
+
+> forwardVariable :: (Enum state, Bounded state, Eq state, Eq symbol, Memoizable state, Memoizable symbol) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> forwardVariable = memoize4 forwardVariable'
+>
+> instance (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Memoizable (HMM state symbol) where
+>   memoize = $(deriveMemoize ''HMM)
+>
+> deriveMemoizable ''Ratio
+
+As the final observation must be emitted in some (unknown) state, taking the
+sum of terminal forward variables for each state yields our desired probability
+-- $P(O_1,O_2,\ldots,O_n|HMM) = \sum_{n=1}^{|I|} \alpha_{|\bold{O}|}(I_n)$:
+
+> forward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Probability
+> forward hmm@HMM{..} observations = sum [forwardVariable t hmm observations state | state <- states]
+>   where t = pred $ length observations
+>
+> evaluate :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Probability
+> evaluate = forward
+
+This evaluation algorithm requires about $TN^2$ calculations, making it
+many orders of magnitudes more efficient than the naïve approach:
+
+  $N$   $T$   $TN^2$
+  ----  ----  -------
+  5     100   2,500
+  10    100   10,000
+  15    100   22,500
 
   2. Inspection: uncovering the hidden part of the model; from an observation
      sequence and a model, uncover the state sequence best explaining those

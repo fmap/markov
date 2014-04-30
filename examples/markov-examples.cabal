@@ -12,10 +12,13 @@ library
   exposed-modules: 
     Example.Clinic
   other-extensions:
-    LambdaCase
+    GeneralizedNewtypeDeriving,
+    LambdaCase,
+    TemplateHaskell
   build-depends:        
     base,
     markov,
+    memoize,
     random
   default-language: 
     Haskell2010

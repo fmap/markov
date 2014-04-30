@@ -13,14 +13,21 @@ library
     AI.Markov.HMM,
     Data.Distribution
   other-modules:
+    Data.Functor.Extras,
+    Data.List.Extras,
     System.Random.Extras
   other-extensions:
-    RecordWildCards
+    GeneralizedNewtypeDeriving,
+    RecordWildCards,
+    TemplateHaskell,
+    ViewPatterns
   hs-source-dirs: 
     src
   build-depends:        
     base,
-    random,
-    MonadRandom
+    bifunctors,
+    memoize,
+    MonadRandom,
+    random
   default-language: 
     Haskell2010
