@@ -1,5 +1,5 @@
 name:                markov-examples
-version:             0.0.0
+version:             0.0.1
 license-file:        ../LICENSE
 synopsis:            Examples for the Markov library.
 author:              Leopold Tal G <leopold.tal.dg@gmail.com>, Vikram Verma <me@vikramverma.com>

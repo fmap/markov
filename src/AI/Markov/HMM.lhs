@@ -1,6 +1,6 @@
 > {-# LANGUAGE RecordWildCards, ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
 >
-> module AI.Markov.HMM (HMM(..), observe, evaluate) where
+> module AI.Markov.HMM (HMM(..), observe, evaluate, sequenceP) where
 >
 > import Control.Applicative ((<$>))
 > import Control.Monad (forM)
@@ -100,7 +100,7 @@ $P(I|HMM)=P(i_1)P(i_2|i_1)\ldots P(i_r|i_{r-1})$:
 > sequenceP :: Eq state => HMM state symbol -> [state] -> Probability
 > sequenceP HMM{..} sequence = product 
 >                            $ head sequence <? start 
->                            : map (uncurry (<?) . fmap transition) (pairs sequence)
+>                            : map (uncurry (?>) . first transition) (pairs sequence)
 
 `sequenceObservationsP` computes the likelihood of some state sequence 
 and an observation sequence co-occuring; $P(O|I, HMM)=P(O_1|i_1)P(O_2|i_2) 
