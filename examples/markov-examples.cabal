@@ -2,7 +2,7 @@ name:                markov-examples
 version:             0.0.1
 license-file:        ../LICENSE
 synopsis:            Examples for the Markov library.
-author:              Leopold Tal G <leopold.tal.dg@gmail.com>, Vikram Verma <me@vikramverma.com>
+author:              Leopold Tal G <leopold.tal.dg@gmail.com>, Yorick van Pelt <yorickvanpelt@gmail.com>, Vikram Verma <me@vikramverma.com>
 maintainer:          Vikram Verma <me@vikramverma.com>
 category:            AI
 build-type:          Simple
