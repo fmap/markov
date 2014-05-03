@@ -137,8 +137,8 @@ A more efficient solution exists in the _forward algorithm_, which
 arranges the computation so that redundant calculations may be cached: 
 
 Given a partial observation sequence $\bold{O} = {O_1,O_2,\ldots,O_n}$ and
-a terminal state $T$, the _forward variable_ provides the likelihood of 
-being in state $T$ after time $n$, having observed $\bold{O}$ --
+a terminal state $T$, the _forward variable_ provides the likelihood of
+having observed $\bold{O}$ and being in state $T$ after time $n$ --
 $\alpha_n(T) = P(O_1,O_2,\ldots,O_n,I_n=T|HMM)$:
 
 > forwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
