@@ -27,6 +27,7 @@ processes without hidden states, as well as higher-order HMMs:
       ```
 
 It may be productive at some point to define data-types for simple Markov
-processes and m-order HMMs (using type-level natural numbers?); exporting 
-them with interfaces to our HMM algorithms (first translating using these
-correspondence relations.)
+processes and m-order HMMs (using type-level natural numbers?); provide
+a type-class for translations between those representations and HMMs,
+and then to generalise our HMM algorithms to operate on anything with that
+structure (`instance HMMable (HMM a b) where { toHMM = id; fromHMM = id}`).
