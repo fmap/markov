@@ -235,11 +235,10 @@ smoothed probability value: $\gamma_n(i)=\frac{\alpha_n(T)\beta_n(T)}
 By maximising the smoothing value at each position in the sequence, we
 can find the most likely state at each position:
 
-> mostLikelyState :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Int -> state
-> mostLikelyState hmm@HMM{..} observations position = argmax (smooth position hmm observations) states
->
 > forwardBackward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
-> forwardBackward hmm observations = mostLikelyState hmm observations <$> [1..length observations]
+> forwardBackward hmm@HMM{..} observations = do
+>   position <- [1..length observations]
+>   return $ argmax (smooth position hmm observations) states
 
 This is a bad criterion, though; in considering only individual states,
 we neglect information about the probability that state sequences will
