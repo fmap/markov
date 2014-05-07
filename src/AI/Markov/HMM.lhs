@@ -7,7 +7,7 @@
 > import Data.Bifunctor (Bifunctor(first))
 > import Data.Distribution (Distribution(..), Probability, (<?), (?>), (<~~))
 > import Data.Function.Memoize (Memoizable(..), deriveMemoize, deriveMemoizable, memoize4)
-> import Data.List.Extras (pairs)
+> import Data.List.Extras (pairs, argmax)
 > import Data.Ratio (Ratio)
 > import System.Random (RandomGen(..))
 > import System.Random.Extras (split3)
@@ -146,7 +146,7 @@ $\alpha_n(T) = P(O_1,O_2,\ldots,O_n,I_n=T|HMM)$:
 > forwardVariable' t hmm@HMM{..} observations state = (*) (observations !! t <? emission state) . sum $ do
 >   predecessor <- states
 >   let a = forwardVariable (t-1) hmm observations predecessor
->   let b = (state <? transition predecessor)
+>       b = state <? transition predecessor
 >   return $ a * b
 
 Below, we compute the terminal forward variable for each state in the HMM,
@@ -184,6 +184,68 @@ many orders of magnitudes more efficient than the naïve approach:
   2. Inspection: uncovering the hidden part of the model; from an observation
      sequence and a model, uncover the state sequence best explaining those
      observations, as provided by some optimality criterion.
+
+There are several possible ways of solving this problem: its
+specification is ambiguous as to the definition of an optimal state
+sequence, and there are several possible optimality criteria.
+
+One possible criterion involves maximising the expected number of
+correct *individual* states: computing at each point in time, the most
+likely state given the observation sequence and model.
+
+To implement this solution, we need implement a variant of the forward
+variable (namely, the backward variable), that describes the likelihood
+of observing a sequence of succeeding observations from some known state
+-- $\beta_n(T) = P(O_{n+1},O_{n+2},\ldots,O_{N}|I_n=T,HMM)$:
+
+> backwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> backwardVariable' n HMM{..} observations state = if succ n == length observations then 1 else sum $ do
+>   successor <- states
+>   let a = transition state ?> successor
+>       b = emission successor ?> (observations !! n)
+>       c = backwardVariable (n+1) HMM{..} observations successor
+>   return $ a * b * c
+>
+> backwardVariable :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> backwardVariable = memoize4 backwardVariable'
+
+To recap: the forward variable determines the likelihood of
+reaching some state $T$ being reached at time $n$, and any sequence
+$O_1,O_2,\ldots,O_n$ being observed preceding it.The backward
+variable accounts for the likelihood of the some state $T$ being
+reached at time $n$, and the succeeding observation sequence being
+$O_{n+1},O_{n+2},\ldots,O_{n+3}$.
+
+Between them we can compute, provided a model and observation sequence,
+the likelihood of some state $i$ co-occuring with any observation -- the
+smoothed probability value:
+$\gamma_n(i)=\frac{\alpha_n(T)\beta_n(T)}{\sum^{N}_{s=1}\alpha_n{s}\beta _n{s}}$
+
+> forwardBackwardVariable :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> forwardBackwardVariable n hmm observations state = forwardVariable n hmm observations state 
+>                                                  * backwardVariable n hmm observations state
+> 
+> smooth :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> smooth n hmm@HMM{..} observations state = numerator / denominator
+>   where numerator         = forwardBackward n state
+>         denominator       = sum $ uncurry forwardBackward <$> zip [1..] states
+>         forwardBackward n = forwardBackwardVariable n hmm observations
+
+By maximising the smoothing value at each position in the sequence, we
+can find the most likely state at each position:
+
+> mostLikelyState :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Int -> state
+> mostLikelyState hmm@HMM{..} observations position = smooth position hmm observations `argmax` states
+>
+> forwardBackward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
+> forwardBackward hmm observations = mostLikelyState hmm observations <$> [1..length observations]
+
+This is a bad criterion, though; in considering only individual states,
+we neglect information about the probability of the occurences of state
+sequences. For example, consider the case in which a HMM has state
+transitions with zero probability: the optimal state sequence may not
+even be valid! For this reason, as before, this function is not exported
+by this module.
 
   3. Training: given some observation sequence, determine the parameters of
      some HMM that best model the data. If we so adapt model parameters to
