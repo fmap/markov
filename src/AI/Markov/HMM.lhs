@@ -1,4 +1,4 @@
-> {-# LANGUAGE RecordWildCards, ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
+﻿> {-# LANGUAGE RecordWildCards, ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
 >
 > module AI.Markov.HMM (HMM(..), observe, evaluate, sequenceP) where
 >
@@ -19,7 +19,7 @@ upper-level process, which produces output.
 
 Structurally:
 
-You know what a Mealy machine is. A discrete hidden Markov model is
+You know what a Mealy machine is. (lolnope) A discrete hidden Markov model is
 structurally similar to a Mealy machine, except that its transitions and
 output values are governed by probability distributions, rather than
 tokens from an input alphabet. Rather than having a fixed initial state,
@@ -33,11 +33,11 @@ More formally, a HMM is a five-tuple consisting of:
 
 > data HMM state symbol = HMM
 
-  1. The distinct states of the process, S.
+  1. The distinct states of the process, S. (|S| = N)
 
 >   { states :: [state]
 
-  2. A finite dictionary of possible observations, O.
+  2. A finite dictionary of possible observations, E.
 
 >   , symbols :: [symbol]
 
@@ -54,7 +54,7 @@ More formally, a HMM is a five-tuple consisting of:
 >   , transition :: state -> Distribution state
 
   5. The observation symbol distributions; given some s ∈ S, this
-     provides the likelihood of every observation o ∈ O being observed
+     provides the likelihood of every observation o ∈ E being observed
      at that i. By the independence assumption, the output observation
      at any time is dependent only on the current state.
 
@@ -78,14 +78,14 @@ useful in cases where gathering raw data is expensive.
 
 Rabiner [^rabiner1989] outlined three fundamental inference problems for HMMs:
 
-  1. Evaluation: given a model and a sequence of observations, compute the
+  1. Evaluation: given a model and a sequence $(O_n)_{n=1}^T$ of observations, compute the
      likelihood those observations were produced by that HMM. This can also be
      interpreted as a scoring problem -- given a sequence produced by the real
      signal source, we can compare the accuracy of models.
 
 We first consider a straightforward (albeit intractable) approach;
 computing the likelihood our observations were produced by each possible
-state sequence (of appropriate length), and summing the result
+state sequence $(I_n)_{n=1}^T$ (of appropriate length), and summing the result
 probabilities. I.e: $$P(O|HMM)=\sum_{j=0}^{n}P(O|I_n,HMM)P(I_n|HMM)$$
 
 First, some precursors; given a set of states, `sequencesOfN` finds all
@@ -95,16 +95,16 @@ $n$-length state sequences:
 > sequencesOfN n = sequence . replicate n . states
 
 `sequenceP` determines the likelihood of a state sequence, given a model;
-$P(I|HMM)=P(i_1)P(i_2|i_1)\ldots P(i_r|i_{r-1})$:
+$P(I|HMM)=P(I_1)P(I_2|I_1)\ldots P(I_r|I_{r-1})$:
 
 > sequenceP :: Eq state => HMM state symbol -> [state] -> Probability
 > sequenceP HMM{..} sequence = product 
 >                            $ head sequence <? start 
 >                            : map (uncurry (?>) . first transition) (pairs sequence)
 
-`sequenceObservationsP` computes the likelihood of some state sequence 
-and an observation sequence co-occuring; $P(O|I, HMM)=P(O_1|i_1)P(O_2|i_2) 
-\ldots P(O_n|i_n)$:
+`sequenceObservationsP` computes the likelihood of an observation sequence 
+given a state sequence; $P(O|I, HMM)=P(O_1|I_1)P(O_2|I_2) 
+\ldots P(O_n|I_n)$:
 
 > sequenceObservationsP :: Eq symbol => HMM state symbol -> [(state, symbol)] -> Probability
 > sequenceObservationsP HMM{..} = product . map (uncurry (?>) . first emission)
@@ -118,7 +118,7 @@ Using the above primitives, we can now express the procedure:
 >         statesObsP = sequenceObservationsP hmm <$> map (`zip` observations) states
 
 But this has abysmal runtime-performance! Let $N$ be the number of
-states, and $T$ $T$ equal to the number of observations (and thus the
+states, and $T$ equal to the number of observations (and thus the
 length of each state sequence); there are thus $N^T$ possible state
 sequences, and for each sequence we require about $2T$ calculations 
 (Rabiner's [^rabiner1989] figure, I haven't validated this); meaning 
@@ -137,9 +137,9 @@ A more efficient solution exists in the _forward algorithm_, which
 arranges the computation so that redundant calculations may be cached: 
 
 Given a partial observation sequence $\bold{O} = {O_1,O_2,\ldots,O_n}$ and
-a terminal state $T$, the _forward variable_ provides the likelihood of
-having observed $\bold{O}$ and being in state $T$ after time $n$ --
-$\alpha_n(T) = P(O_1,O_2,\ldots,O_n,I_n=T|HMM)$:
+a terminal state $i$, the _forward variable_ provides the likelihood of
+having observed $\bold{O}$ and being in state $i$ after time $n$ --
+$\alpha_n(i) = P(O_1,O_2,\ldots,O_n,I_n=i|HMM)$:
 
 > forwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > forwardVariable' 0 HMM{..} observations state = (state <? start) * (head observations <? emission state)
@@ -197,7 +197,7 @@ likely state given the observation sequence and model.
 To implement this solution, we need implement a variant of the forward
 variable (namely, the backward variable), that describes the likelihood
 of observing a sequence of succeeding observations from some known state
--- $\beta_n(T) = P(O_{n+1},O_{n+2},\ldots,O_{N}|I_n=T,HMM)$:
+-- $\beta_n(i) = P(O_{n+1},O_{n+2},\ldots,O_{T},I_n=i,HMM)$:
 
 > backwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > backwardVariable' n HMM{..} observations state = if succ n == length observations then 1 else sum $ do
@@ -211,16 +211,19 @@ of observing a sequence of succeeding observations from some known state
 > backwardVariable = memoize4 backwardVariable'
 
 To recap: the forward variable determines the likelihood of
-reaching some state $T$ being reached at time $n$, and a sequence
+reaching some state $i$ being reached at time $n$, and a sequence
 $O_1,O_2,\ldots,O_n$ being observed preceding it. The backward
-variable accounts for the likelihood of the some state $T$ being
+variable accounts for the likelihood of the same state $i$ being
 reached at time $n$, and the succeeding observation sequence being
-$O_{n+1},O_{n+2},\ldots,O_{N}$.
+$O_{n+1},O_{n+2},\ldots,O_{T}$.
 
 Between them we can compute, provided a model and observation sequence,
-the likelihood of some state $i$ co-occuring with any observation--the
-smoothed probability value: $\gamma_n(i)=\frac{\alpha_n(T)\beta_n(T)}
-{\sum^{N}_{s=1}\alpha_n{s}\beta_n{s}}$
+the likelihood of some state $i$ given the observation sequence--the
+smoothed probability value: $\gamma_n(i)=\frac{\alpha_n(i)\beta_n(i)}
+{\sum^{N}_{s=1}\alpha_n{s}\beta_n{s}} = \frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)}
+{\sum^{N}_{s=1} P(I_n=s,O_1,O_2,\ldots,O_T|HMM)} =
+\frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)} {P(O_1,O_2,\ldots,O_T|HMM)} =
+P(I_n=i|O_1,O_2,\ldots,O_T,HMM)$
 
 > forwardBackwardVariable :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > forwardBackwardVariable n hmm observations state = forwardVariable n hmm observations state 
