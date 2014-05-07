@@ -181,16 +181,17 @@ many orders of magnitudes more efficient than the naïve approach:
   10    100   10,000
   15    100   22,500
 
-  2. Inspection: uncovering the hidden part of the model; from an observation
-     sequence and a model, uncover the state sequence best explaining those
-     observations, as provided by some optimality criterion.
+  2. Inspection: uncovering the hidden part of the model; from an
+     observation sequence and a model, uncover the state sequence best
+     explaining those observations, as provided by some optimality
+     criterion.
 
-There are several possible ways of solving this problem: its
-specification is ambiguous as to the definition of an optimal state
-sequence, and there are several possible optimality criteria.
+There are several possible ways of solving this problem: there are
+several possible optimality criteria, as the specification is ambiguous
+as to the definition of an optimal state sequence.
 
 One possible criterion involves maximising the expected number of
-correct *individual* states: computing at each point in time, the most
+correct individual states: computing at each point in time, the most
 likely state given the observation sequence and model.
 
 To implement this solution, we need implement a variant of the forward
@@ -210,16 +211,16 @@ of observing a sequence of succeeding observations from some known state
 > backwardVariable = memoize4 backwardVariable'
 
 To recap: the forward variable determines the likelihood of
-reaching some state $T$ being reached at time $n$, and any sequence
-$O_1,O_2,\ldots,O_n$ being observed preceding it.The backward
+reaching some state $T$ being reached at time $n$, and a sequence
+$O_1,O_2,\ldots,O_n$ being observed preceding it. The backward
 variable accounts for the likelihood of the some state $T$ being
 reached at time $n$, and the succeeding observation sequence being
-$O_{n+1},O_{n+2},\ldots,O_{n+3}$.
+$O_{n+1},O_{n+2},\ldots,O_{N}$.
 
 Between them we can compute, provided a model and observation sequence,
-the likelihood of some state $i$ co-occuring with any observation -- the
-smoothed probability value:
-$\gamma_n(i)=\frac{\alpha_n(T)\beta_n(T)}{\sum^{N}_{s=1}\alpha_n{s}\beta _n{s}}$
+the likelihood of some state $i$ co-occuring with any observation--the
+smoothed probability value: $\gamma_n(i)=\frac{\alpha_n(T)\beta_n(T)}
+{\sum^{N}_{s=1}\alpha_n{s}\beta_n{s}}$
 
 > forwardBackwardVariable :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > forwardBackwardVariable n hmm observations state = forwardVariable n hmm observations state 
@@ -228,24 +229,23 @@ $\gamma_n(i)=\frac{\alpha_n(T)\beta_n(T)}{\sum^{N}_{s=1}\alpha_n{s}\beta _n{s}}$
 > smooth :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > smooth n hmm@HMM{..} observations state = numerator / denominator
 >   where numerator         = forwardBackward n state
->         denominator       = sum $ uncurry forwardBackward <$> zip [1..] states
+>         denominator       = sum $ zipWith forwardBackward [1..] states
 >         forwardBackward n = forwardBackwardVariable n hmm observations
 
 By maximising the smoothing value at each position in the sequence, we
 can find the most likely state at each position:
 
 > mostLikelyState :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Int -> state
-> mostLikelyState hmm@HMM{..} observations position = smooth position hmm observations `argmax` states
+> mostLikelyState hmm@HMM{..} observations position = argmax (smooth position hmm observations) states
 >
 > forwardBackward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > forwardBackward hmm observations = mostLikelyState hmm observations <$> [1..length observations]
 
 This is a bad criterion, though; in considering only individual states,
-we neglect information about the probability of the occurences of state
-sequences. For example, consider the case in which a HMM has state
-transitions with zero probability: the optimal state sequence may not
-even be valid! For this reason, as before, this function is not exported
-by this module.
+we neglect information about the probability that state sequences will
+occur. Consider the case in which a HMM has state transitions with zero
+probability: the optimal state sequence may not even be valid! For this
+reason, as before, this function is not exported by this module.
 
   3. Training: given some observation sequence, determine the parameters of
      some HMM that best model the data. If we so adapt model parameters to
