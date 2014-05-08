@@ -1,4 +1,4 @@
-﻿> {-# LANGUAGE RecordWildCards, ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
+> {-# LANGUAGE RecordWildCards, ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
 >
 > module AI.Markov.HMM (HMM(..), observe, evaluate, sequenceP) where
 >
