@@ -250,6 +250,24 @@ occur. Consider the case in which a HMM has state transitions with zero
 probability: the optimal state sequence may not even be valid! For this
 reason, as before, this function is not exported by this module.
 
+The Viterbi algorithm returns at each step the most likely sequence leading
+up to a state, and the probability of that sequence given the observations.
+
+> viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
+> viterbiStep' 0 hmm observations state = ([state], (start ?> state) * (head observations <? emission state))
+> viterbiStep' n hmm observations state = maximumBy snd $ map f states
+>	where f s = (state:path, prob * (transition s ?> state) * (emission state ?> (observations !! n)) )
+>		where (path, prob) = viterbiStep' (n-1) hmm observations s
+
+> viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
+> viterbiStep = memoize4 viterbiStep'
+
+The most likely sequence overall is the most likely sequence of the most
+likely sequences yielding each state at the last step.
+
+> viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol) => HMM state symbol -> [symbol] -> [state]
+> viterbi hmm observations = reverse $ fst $ maximumBy snd $ map (viterbiStep (pred $ length observations) hmm) states
+
   3. Training: given some observation sequence, determine the parameters of
      some HMM that best model the data. If we so adapt model parameters to
      observed training data, we can accurately simulate real signal sources.
