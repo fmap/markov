@@ -6,7 +6,9 @@
 > import Control.Monad (forM)
 > import Data.Bifunctor (Bifunctor(first))
 > import Data.Distribution (Distribution(..), Probability, (<?), (?>), (<~~))
+> import Data.Function (on)
 > import Data.Function.Memoize (Memoizable(..), deriveMemoize, deriveMemoizable, memoize4)
+> import Data.List (maximumBy)
 > import Data.List.Extras (pairs, argmax)
 > import Data.Ratio (Ratio)
 > import System.Random (RandomGen(..))
@@ -253,20 +255,24 @@ reason, as before, this function is not exported by this module.
 The Viterbi algorithm returns at each step the most likely sequence leading
 up to a state, and the probability of that sequence given the observations.
 
-> viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
-> viterbiStep' 0 hmm observations state = ([state], (start ?> state) * (head observations <? emission state))
-> viterbiStep' n hmm observations state = maximumBy snd $ map f states
->	where f s = (state:path, prob * (transition s ?> state) * (emission state ?> (observations !! n)) )
->		where (path, prob) = viterbiStep' (n-1) hmm observations s
+> biggest :: Ord b => (a -> b) -> [a] -> a
+> biggest f = maximumBy $ on compare f
 
-> viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
+> viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
+> viterbiStep' 0 hmm@HMM{..} observations state = ([state], (start ?> state) * ((emission state) ?> (observations !! 0)))
+> viterbiStep' n hmm@HMM{..} observations state = biggest snd $ map f states
+>	where
+>       f s = (state:path, prob * ((transition s) ?> state) * ((emission state) ?> (observations !! n)) )
+>		    where (path, prob) = viterbiStep (n-1) hmm observations s
+
+> viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
 > viterbiStep = memoize4 viterbiStep'
 
 The most likely sequence overall is the most likely sequence of the most
 likely sequences yielding each state at the last step.
 
-> viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol) => HMM state symbol -> [symbol] -> [state]
-> viterbi hmm observations = reverse $ fst $ maximumBy snd $ map (viterbiStep (pred $ length observations) hmm) states
+> viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
+> viterbi hmm@HMM{..} observations = reverse $ fst $ biggest snd $ map (viterbiStep (pred $ length observations) hmm observations) states
 
   3. Training: given some observation sequence, determine the parameters of
      some HMM that best model the data. If we so adapt model parameters to
