@@ -19,15 +19,16 @@ upper-level process, which produces output.
 
 Structurally:
 
-You know what a Mealy machine is. (lolnope) A discrete hidden Markov model is
-structurally similar to a Mealy machine, except that its transitions and
-output values are governed by probability distributions, rather than
-tokens from an input alphabet. Rather than having a fixed initial state,
-this is chosen by an experiment on the prior distribution for the state
-set; a set of conditional probability distributions determine the
-likelihood of transition to any state from a given state, and another
-set the conditional probability of emitting each symbol in the output
-alphabet.
+You know what a [Mealy machine][mealy] is, right? A discrete hidden Markov
+model is structurally similar to a Mealy machine, except that its transitions
+and output values are governed by probability distributions, rather than tokens
+from an input alphabet. Rather than having a fixed initial state, this is
+chosen by an experiment on the prior distribution for the state set; a set of
+conditional probability distributions determine the likelihood of transition to
+any state from a given state, and another set the conditional probability of
+emitting each symbol in the output alphabet.
+
+  [mealy]: https://en.wikipedia.org/wiki/Mealy_machine
 
 More formally, a HMM is a five-tuple consisting of:
 
