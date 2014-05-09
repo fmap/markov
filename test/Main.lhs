@@ -1,6 +1,6 @@
 > module Main (main) where
 >
-> import AI.Markov.HMM (HMM(..), sequenceP, evaluate)
+> import AI.Markov.HMM (HMM(..), sequenceP, evaluate, inspect)
 > import Control.Applicative ((<$>))
 > import Data.Bifunctor (Bifunctor(first))
 > import Example.Clinic (clinic, Health(..), Symptom(..))
@@ -24,10 +24,21 @@ observations were produced by that HMM; $P(O_1,O_2,\ldots,O_n|HMM)$.
 >   , ("Likelihood of [N,N] for clinic." , test [Normal,Normal] == 0.6*0.5*0.7*0.5+0.6*0.5*0.3*0.1+0.4*0.1*0.4*0.5+0.4*0.1*0.6*0.1)
 >   ]
 
+The inspect function should find the state sequence most likely
+responsible for some sequence of observations, given a HMM; 
+$argmax_{q\inQ}P(q,O_1,O_2,\ldots,O_n|HMM)$: 
+
+> inspectTests :: [(String, Bool)]
+> inspectTests = let test = inspect clinic in first ("inspect: " ++) <$> 
+>   [ ("Sequence behind [N] for clinic.", test [Normal] == [Healthy])
+>   , ("Sequence behind [N,C,D] for clinic.", test [Normal, Cold, Dizzy] == [Healthy, Healthy, Fever])
+>   ]
+
 To run our assertions:
 
 > main :: IO ()
 > main = runAssertions $ concat
 >   [ sequencePTests
 >   , evaluateTests
+>   , inspectTests
 >   ]

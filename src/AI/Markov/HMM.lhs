@@ -1,6 +1,6 @@
 > {-# LANGUAGE RecordWildCards, ViewPatterns, GeneralizedNewtypeDeriving, TemplateHaskell #-}
 > 
-> module AI.Markov.HMM (HMM(..), observe, evaluate, sequenceP) where
+> module AI.Markov.HMM (HMM(..), observe, evaluate, inspect, sequenceP) where
 >
 > import Control.Applicative ((<$>))
 > import Control.Monad (forM)
@@ -273,6 +273,9 @@ likely sequences yielding each state at the last step.
 
 > viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > viterbi hmm@HMM{..} observations = reverse $ fst $ biggest snd $ map (viterbiStep (pred $ length observations) hmm observations) states
+>
+> inspect :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
+> inspect = viterbi
 
   3. Training: given some observation sequence, determine the parameters of
      some HMM that best model the data. If we so adapt model parameters to
