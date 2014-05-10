@@ -255,12 +255,9 @@ reason, as before, this function is not exported by this module.
 The Viterbi algorithm returns at each step the most likely sequence leading
 up to a state, and the probability of that sequence given the observations.
 
-> biggest :: Ord b => (a -> b) -> [a] -> a
-> biggest f = maximumBy $ on compare f
-
 > viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
 > viterbiStep' 0 hmm@HMM{..} observations state = ([state], (start ?> state) * ((emission state) ?> (observations !! 0)))
-> viterbiStep' n hmm@HMM{..} observations state = biggest snd $ map f states
+> viterbiStep' n hmm@HMM{..} observations state = argmax snd $ map f states
 >	where
 >       f s = (state:path, prob * ((transition s) ?> state) * ((emission state) ?> (observations !! n)) )
 >		    where (path, prob) = viterbiStep (n-1) hmm observations s
@@ -272,7 +269,7 @@ The most likely sequence overall is the most likely sequence of the most
 likely sequences yielding each state at the last step.
 
 > viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
-> viterbi hmm@HMM{..} observations = reverse $ fst $ biggest snd $ map (viterbiStep (pred $ length observations) hmm observations) states
+> viterbi hmm@HMM{..} observations = reverse $ fst $ argmax snd $ map (viterbiStep (pred $ length observations) hmm observations) states
 >
 > inspect :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > inspect = viterbi
