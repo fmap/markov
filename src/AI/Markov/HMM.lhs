@@ -256,12 +256,13 @@ The Viterbi algorithm returns at each step the most likely sequence leading
 up to a state, and the probability of that sequence given the observations.
 
 > viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
-> viterbiStep' 0 hmm@HMM{..} observations state = ([state], (start ?> state) * ((emission state) ?> (observations !! 0)))
-> viterbiStep' n hmm@HMM{..} observations state = argmax snd $ map f states
->	where
->       f s = (state:path, prob * ((transition s) ?> state) * ((emission state) ?> (observations !! n)) )
->		    where (path, prob) = viterbiStep (n-1) hmm observations s
-
+> viterbiStep' 0 hmm@HMM{..} observations state = ([state], start ?> state * emission state ?> head observations)
+> viterbiStep' n hmm@HMM{..} observations state = argmax snd $ do
+>   predecessor <- states
+>   let (path, prob) = first (state:) $ viterbiStep (n-1) hmm observations predecessor
+>       likelihood   = prob * (transition predecessor ?> state) * (emission state ?> head observations)
+>   return $ (path, likelihood)
+>
 > viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
 > viterbiStep = memoize4 viterbiStep'
 
@@ -269,7 +270,10 @@ The most likely sequence overall is the most likely sequence of the most
 likely sequences yielding each state at the last step.
 
 > viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
-> viterbi hmm@HMM{..} observations = reverse $ fst $ argmax snd $ map (viterbiStep (pred $ length observations) hmm observations) states
+> viterbi hmm@HMM{..} observations = reverse . fst . argmax snd $ do
+>   let t = length observations - 1
+>   state <- states
+>   return $ viterbiStep t hmm observations state
 >
 > inspect :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > inspect = viterbi
