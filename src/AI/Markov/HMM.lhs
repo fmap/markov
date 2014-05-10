@@ -259,9 +259,9 @@ up to a state, and the probability of that sequence given the observations.
 > viterbiStep' 0 hmm@HMM{..} observations state = ([state], start ?> state * emission state ?> head observations)
 > viterbiStep' n hmm@HMM{..} observations state = argmax snd $ do
 >   predecessor <- states
->   let (path, prob) = first (state:) $ viterbiStep (n-1) hmm observations predecessor
->       likelihood   = prob * (transition predecessor ?> state) * (emission state ?> head observations)
->   return $ (path, likelihood)
+>   let (path, prob) = viterbiStep (n-1) hmm observations predecessor
+>       likelihood   = prob * transition predecessor ?> state * emission state ?> head observations
+>   return $ (state:path, likelihood)
 >
 > viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
 > viterbiStep = memoize4 viterbiStep'
@@ -272,8 +272,8 @@ likely sequences yielding each state at the last step.
 > viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > viterbi hmm@HMM{..} observations = reverse . fst . argmax snd $ do
 >   let t = length observations - 1
->   state <- states
->   return $ viterbiStep t hmm observations state
+>   terminal <- states
+>   return $ viterbiStep t hmm observations terminal
 >
 > inspect :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > inspect = viterbi
