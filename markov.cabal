@@ -17,10 +17,8 @@ library
     Data.List.Extras,
     System.Random.Extras
   other-extensions:
-    GeneralizedNewtypeDeriving,
     RecordWildCards,
-    TemplateHaskell,
-    ViewPatterns
+    TemplateHaskell
   hs-source-dirs: 
     src
   build-depends:        
