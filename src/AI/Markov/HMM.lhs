@@ -260,7 +260,7 @@ up to a state, and the probability of that sequence given the observations.
 > viterbiStep' n hmm@HMM{..} observations state = argmax snd $ do
 >   predecessor <- states
 >   let (path, prob) = viterbiStep (n-1) hmm observations predecessor
->       likelihood   = prob * transition predecessor ?> state * emission state ?> head observations
+>       likelihood   = prob * transition predecessor ?> state * emission state ?> (observations !! n)
 >   return $ (state:path, likelihood)
 >
 > viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
