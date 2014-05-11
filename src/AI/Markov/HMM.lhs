@@ -252,8 +252,17 @@ occur. Consider the case in which a HMM has state transitions with zero
 probability: the optimal state sequence may not even be valid! For this
 reason, as before, this function is not exported by this module.
 
-The Viterbi algorithm returns at each step the most likely sequence leading
-up to a state, and the probability of that sequence given the observations.
+A more reasonable optimality criterion is to find the most probable
+contiguous sequence of states; i.e. determining the state sequence that
+maximises $P(O,I|HMM)$. This can be found by application of _the Viterbi
+algorithm_, which involves maximising over likelihood estimates for each
+possible state sequence.
+
+Given an observation sequence $\bold{O} = {O_1,O_2,\ldots,O_T}$ a state
+$i$, the _Viterbi step_ finds the state sequence most likely to account
+for the first $n$ observations and terminating at state $i$; that is:
+$$\delta_n(i) = \argmax_{I_1,I_2,\ldots,I_{n-1}} P(I_1,I_2,\ldots,I_n=1,
+\bold{O}|HMM)$$:
 
 > viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
 > viterbiStep' 0 hmm@HMM{..} observations state = (pure state, start ?> state * emission state ?> head observations)
@@ -266,8 +275,8 @@ up to a state, and the probability of that sequence given the observations.
 > viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
 > viterbiStep = memoize4 viterbiStep'
 
-The most likely sequence overall is the most likely sequence of the most
-likely sequences yielding each state at the last step.
+As the final observation must be emitted in some state, maximising the
+Viterbi step over $S$ yields the desired state sequence:
 
 > viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > viterbi hmm@HMM{..} observations = reverse . fst . argmax snd $ do
