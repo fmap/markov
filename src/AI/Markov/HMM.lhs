@@ -2,7 +2,7 @@
 > 
 > module AI.Markov.HMM (HMM(..), observe, evaluate, inspect, sequenceP) where
 >
-> import Control.Applicative ((<$>))
+> import Control.Applicative ((<$>), pure)
 > import Control.Monad (forM)
 > import Data.Bifunctor (Bifunctor(first))
 > import Data.Distribution (Distribution(..), Probability, (<?), (?>), (<~~))
@@ -256,7 +256,7 @@ The Viterbi algorithm returns at each step the most likely sequence leading
 up to a state, and the probability of that sequence given the observations.
 
 > viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
-> viterbiStep' 0 hmm@HMM{..} observations state = ([state], start ?> state * emission state ?> head observations)
+> viterbiStep' 0 hmm@HMM{..} observations state = (pure state, start ?> state * emission state ?> head observations)
 > viterbiStep' n hmm@HMM{..} observations state = argmax snd $ do
 >   predecessor <- states
 >   let (path, prob) = viterbiStep (n-1) hmm observations predecessor
