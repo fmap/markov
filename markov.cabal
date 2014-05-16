@@ -41,7 +41,7 @@ test-suite markov-tests
   build-depends:
     base,
     bifunctors,
-    assert,
+    assertions,
     markov,
     memoize,
     random
