@@ -1,6 +1,7 @@
-name:                markov
+name:                markov-processes
 version:             0.0.2
 license-file:        LICENSE
+license:             MIT
 synopsis:            Hidden Markov processes.
 author:              Leopold Tal G <leopold.tal.dg@gmail.com>, Yorick van Pelt <yorickvanpelt@gmail.com>, Vikram Verma <me@vikramverma.com>
 maintainer:          Vikram Verma <me@vikramverma.com>
@@ -22,7 +23,7 @@ library
   hs-source-dirs: 
     src
   build-depends:        
-    base,
+    base == 4.*,
     bifunctors,
     memoize,
     MonadRandom,
@@ -39,10 +40,10 @@ test-suite markov-tests
     examples,
     test
   build-depends:
-    base,
+    base == 4.*,
     bifunctors,
     assertions,
-    markov,
+    markov-processes,
     memoize,
     random
   default-language:
