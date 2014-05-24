@@ -200,7 +200,7 @@ likely state given the observation sequence and model.
 To implement this solution, we need implement a variant of the forward
 variable (namely, the backward variable), that describes the likelihood
 of observing a sequence of succeeding observations from some known state
--- $\beta_n(i) = P(O_{n+1},O_{n+2},\ldots,O_{T},I_n=i,HMM)$:
+-- $\beta_n(i) = P(O_{n+1},O_{n+2},\ldots,O_{T}|I_n=i,HMM)$:
 
 > backwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > backwardVariable' n HMM{..} observations state = if succ n == length observations then 1 else sum $ do
@@ -290,6 +290,8 @@ Viterbi step over $S$ yields the desired state sequence:
   3. Training: given some observation sequence, determine the parameters of
      some HMM that best model the data. If we so adapt model parameters to
      observed training data, we can accurately simulate real signal sources.
+
+
 
   [^rabiner1989]: Lawrence R.  Rabiner, _A Tutorial on Hidden Markov Models and
                   Selected Applications in Speech Recognition_, Proceedings of
