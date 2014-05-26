@@ -159,6 +159,8 @@ of the state under consideration, it's time-saving to memoise this value:
 > forwardVariable :: (Enum state, Bounded state, Eq state, Eq symbol, Memoizable state, Memoizable symbol) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > forwardVariable = memoize4 forwardVariable'
 >
+> $(return []) -- With GHC 7.8, nothing is on scope of the first splice.
+>
 > instance (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Memoizable (HMM state symbol) where
 >   memoize = $(deriveMemoize ''HMM)
 >
