@@ -170,7 +170,7 @@ of the state under consideration, it's time-saving to memoise this value:
 > forwardVariable :: (Enum state, Bounded state, Eq state, Eq symbol, Memoizable state, Memoizable symbol) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > forwardVariable = memoize4 forwardVariable'
 >
-> $(return []) -- With GHC 7.8, nothing is on scope of the first splice.
+> $(return []) -- Since GHC 7.8, nothing is within scope of the first splice.
 >
 > instance (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Memoizable (HMM state symbol) where
 >   memoize = $(deriveMemoize ''HMM)
@@ -235,11 +235,15 @@ $O_{n+1},O_{n+2},\ldots,O_{T}$.
 
 Between them we can compute, provided a model and observation sequence,
 the likelihood of some state $i$ given the observation sequence--the
-smoothed probability value: $\gamma_n(i)=\frac{\alpha_n(i)\beta_n(i)}
-{\sum^{N}_{s=1}\alpha_n{s}\beta_n{s}} = \frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)}
-{\sum^{N}_{s=1} P(I_n=s,O_1,O_2,\ldots,O_T|HMM)} =
-\frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)} {P(O_1,O_2,\ldots,O_T|HMM)} =
-P(I_n=i|O_1,O_2,\ldots,O_T,HMM)$
+smoothed probability value: 
+
+  \begin{align*}
+    \gamma_n(i)
+      \\ &=\frac{\alpha_n(i)\beta_n(i)}{\sum^{N}_{s=1}\alpha_n{s}\beta_n{s}} 
+      \\ &=\frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)}{\sum^{N}_{s=1} P(I_n=s,O_1,O_2,\ldots,O_T|HMM)} 
+      \\ &=\frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)} {P(O_1,O_2,\ldots,O_T|HMM)} 
+      \\ &=P(I_n=i|O_1,O_2,\ldots,O_T,HMM)
+  \end{align*}
 
 > forwardBackwardVariable :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > forwardBackwardVariable n hmm observations state = forwardVariable n hmm observations state 
@@ -324,7 +328,8 @@ so bounded, meaning this is computable.
 $n$ and $n+1$ respectively, provided a HMM and observation sequence:
 
   \begin{align*}
-    \xi_n(i,j)=P(I_n=i,I_{n+1}=j|O_1,O_2,\ldots,O_T,HMM) 
+    \xi_n(i,j)
+      \\ &=P(I_n=i,I_{n+1}=j|O_1,O_2,\ldots,O_T,HMM) 
       \\ &=\frac{P(O_1,O_2,\ldots,O_T|I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
       \\ &=\frac{P(O_1,\ldots,O_{n-1}|I_n=i,I_{n+1}=j,HMM)P(O_n,\ldots,O_T|O_1,\ldots,O_{n-1},I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
       \\ &=\frac{P(O_1,\ldots,O_{n-1}|I_n=i,HMM)P(O_n,\ldots,O_T|I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
