@@ -1,15 +1,26 @@
-> {-# LANGUAGE RecordWildCards, TemplateHaskell #-}
+> {-# LANGUAGE RecordWildCards, LambdaCase, TupleSections, TemplateHaskell, ViewPatterns #-}
 > 
-> module AI.Markov.HMM (HMM(..), observe, evaluate, inspect, sequenceP) where
+> module AI.Markov.HMM (
+>   HMM(..),
+>   observe,
+>   sequenceP,
+>   evaluate,
+>   inspect,
+>   train,
+>   Limit(..),
+>   uniformHMM
+> ) where
 >
 > import Control.Applicative ((<$>), pure)
-> import Control.Monad (forM)
+> import Control.Monad (forM, ap)
 > import Data.Bifunctor (Bifunctor(first))
-> import Data.Distribution (Distribution(..), Probability, (<?), (?>), (<~~))
+> import Data.Distribution (Distribution(..), Probability, (<?), (?>), (<~~), uniform)
 > import Data.Function (on)
+> import Data.Function.Extras (fixed)
 > import Data.Function.Memoize (Memoizable(..), deriveMemoize, deriveMemoizable, memoize4)
-> import Data.List (maximumBy)
-> import Data.List.Extras (pairs, argmax)
+> import Data.Functor.Extras (for)
+> import Data.Maybe (fromJust)
+> import Data.List.Extras (pairs, argmax, argsum)
 > import Data.Ratio (Ratio)
 > import System.Random (RandomGen(..))
 > import System.Random.Extras (split3)
@@ -17,7 +28,7 @@
 _Hidden Markov models_ (HMMs) are used to model generative sequences
 characterisable by a doubly-embedded stochastic process in which the
 underlying process is hidden, and can only be observed through an
-upper-level process, which produces output. 
+upper-level process, which produces output.
 
 Structurally:
 
@@ -64,11 +75,11 @@ More formally, a HMM is a five-tuple consisting of:
 >   , emission :: state -> Distribution symbol
 >   }
 
-Having characterised some sequence generator as a HMM (and so given
-a well-parametrised configuration of such a model), we can simulate
-its output without collecting any further data; inferring future
-behaviour from demonstrated statistical properties. This is particularly
-useful in cases where gathering raw data is expensive. 
+Having characterised some sequence generator as a HMM (and so given a
+well-parametrised configuration of such a model), we can simulate its
+output without collecting any further data; inferring future behaviour
+from demonstrated statistical properties. This is particularly useful in
+cases where gathering raw data is expensive.
 
 > observe :: RandomGen seed => seed -> HMM state symbol -> [symbol]
 > observe seed hmm@HMM{..} = observe' ns hmm (start <~~ ts)
@@ -171,7 +182,7 @@ sum of terminal forward variables for each state yields our desired probability
 -- $P(O_1,O_2,\ldots,O_n|HMM) = \sum_{n=1}^{|I|} \alpha_{|\bold{O}|}(I_n)$:
 
 > forward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Probability
-> forward hmm@HMM{..} observations = sum [forwardVariable t hmm observations state | state <- states]
+> forward hmm@HMM{..} observations = forwardVariable t hmm observations `argsum` states
 >   where t = pred $ length observations
 >
 > evaluate :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Probability
@@ -293,7 +304,95 @@ Viterbi step over $S$ yields the desired state sequence:
      some HMM that best model the data. If we so adapt model parameters to
      observed training data, we can accurately simulate real signal sources.
 
+Solution: the _Baum-Welch algorithm_. Two precursors:
 
+We define two HMMs to be equivalent if they share dictionaries and
+probability distributions. Though we can't in general define equality
+over `(->)`, here in both cases the domain is the state dictionary, and
+so bounded, meaning this is computable.
+
+> instance (Eq state, Eq symbol) => Eq (HMM state symbol) where
+>   HMM st0 sy0 i0 t0 e0 == HMM st1 sy1 i1 t1 e1 = and
+>     [ st0 == st1
+>     , sy0 == sy1
+>     , i0  == i1
+>     , on (==) (for st0) t0 t1
+>     , on (==) (for st0) e0 e1
+>     ]
+
+`xi` determines the likelihood of being in states $i$ and $j$, at times
+$n$ and $n+1$ respectively, provided a HMM and observation sequence:
+
+  \begin{align*}
+    \xi_n(i,j)=P(I_n=i,I_{n+1}=j|O_1,O_2,\ldots,O_T,HMM) 
+      \\ &=\frac{P(O_1,O_2,\ldots,O_T|I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
+      \\ &=\frac{P(O_1,\ldots,O_{n-1}|I_n=i,I_{n+1}=j,HMM)P(O_n,\ldots,O_T|O_1,\ldots,O_{n-1},I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
+      \\ &=\frac{P(O_1,\ldots,O_{n-1}|I_n=i,HMM)P(O_n,\ldots,O_T|I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
+      \\ &=\frac{\alpha_n(i)P(O_n|I_n=i,I_{n+1}=j,HMM)P(O_{n+1},\ldots,O_T|O_n,I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
+      \\ &=\frac{\alpha_n(i)P(O_n|I_n=i,HMM)P(I_{n+1}=j|I_n=i,HMM)P(O_{n+1},\ldots,O_T|I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
+      \\ &=\frac{\alpha_n(i)P(O_n|I_n=i,HMM)P(I_{n+1}=j|I_n=i,HMM)\beta_{n+1}(j)}{\sum_{k \in S} \alpha_n(k) \beta_n(k)}
+  \end{align*}
+
+> xi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> state -> Probability
+> xi n hmm@HMM{..} observations i j = forwardVariable n hmm observations i
+>                                   * transition i ?> j
+>                                   * backwardVariable (n+1) hmm observations j
+>                                   * observations !! (n+1) <? emission j
+>                                   / forwardBackwardVariable n hmm observations `argsum` states
+
+Between `xi` and the above smoothing function, we can re-estimate HMM
+parameters:
+
+> step :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> HMM state symbol
+> step hmm@HMM{..} observations = hmm
+>   { start = ap (,) (smooth 1 hmm observations) <$> states
+>   , transition = \from -> for states $ \to -> (to,) 
+>       $ argsum (\n -> xi n hmm observations from to) [0..t-1] 
+>       / argsum (\n -> smooth n hmm observations from) [0..t-1]
+>   , emission  = \from -> for symbols $ \emission -> (emission,)
+>       $ argsum (\n -> b2i (observations!!n == emission) * smooth n hmm observations from) [0..t] 
+>       / argsum (\n -> smooth n hmm observations from) [0..t]
+>   } where (t,b2i) = (length observations - 1, \case { True -> 1; False -> 0})
+
+The _Baum-Welch algorithm_ involves iteratively applying the above
+re-estimation until attainment of a fixed point. Though convergence is
+guaranteed for this procedure, we allow optional provision of a limit
+for time sensitive applications -- if re-restimation is still yielding
+improvements after this number of iterations, we cut off execution:
+
+> newtype Limit = Limit { limit :: Int }
+>
+> baumWelch' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> Int -> HMM state symbol -> [symbol] -> HMM state symbol
+> baumWelch' limit iterations hmm observations 
+>   | iterations >= limit = hmm
+>   | hmm' == hmm         = hmm
+>   | otherwise           = baumWelch' limit (succ iterations) hmm observations
+>   where hmm' = hmm `step` observations
+>
+> baumWelch :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Maybe Limit -> HMM state symbol -> [symbol] -> HMM state symbol
+> baumWelch Nothing = flip (fixed . flip step)
+> baumWelch (limit . fromJust -> limit) = baumWelch' limit 0 
+>
+> train :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Maybe Limit -> HMM state symbol -> [symbol] -> HMM state symbol
+> train = baumWelch
+
+Note: the Baum-Welch procedure is not guaranteed to achieve a global
+maximum, and so it is possible to over-fit a particular data set.
+
+The above HMM training procedure is re-estimative: provided a model and
+an observation sequence, we find a model that better or equivalently
+describes the observations. But what if we're missing initial
+parameters? In cases in which prior information is unavailable, a
+sensible option is to set the parameters to be uniform, that is:
+
+> uniformHMM :: [state] -> [symbol] -> HMM state symbol
+> uniformHMM states symbols = HMM
+>   { states     = states
+>   , symbols    = symbols
+>   , start      = uniform states
+>   , transition = const $ uniform states
+>   , emission   = const $ uniform symbols
+>   } 
 
   [^rabiner1989]: Lawrence R.  Rabiner, _A Tutorial on Hidden Markov Models and
                   Selected Applications in Speech Recognition_, Proceedings of

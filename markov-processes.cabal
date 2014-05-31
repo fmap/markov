@@ -1,5 +1,5 @@
 name:                markov-processes
-version:             0.0.2
+version:             0.0.3
 license-file:        LICENSE
 license:             MIT
 synopsis:            Hidden Markov processes.
@@ -15,11 +15,15 @@ library
     Data.Distribution
   other-modules:
     Data.Functor.Extras,
+    Data.Function.Extras,
     Data.List.Extras,
     System.Random.Extras
   other-extensions:
+    LambdaCase,
     RecordWildCards,
-    TemplateHaskell
+    TemplateHaskell,
+    TupleSections,
+    ViewPatterns
   hs-source-dirs: 
     src
   build-depends:        

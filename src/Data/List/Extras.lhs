@@ -1,6 +1,7 @@
-> module Data.List.Extras (pairs, argmax) where
+> module Data.List.Extras (pairs, argmax, argsum) where
 >
 > import Control.Applicative ((<*>))
+> import Data.Functor.Extras ((<$$>))
 > import Data.Function (on)
 > import Data.List (maximumBy)
 
@@ -14,3 +15,9 @@ list for which the given function attains its maximum value:
 
 > argmax :: Ord b => (a -> b) -> [a] -> a
 > argmax = maximumBy . on compare
+
+`argsum` takes a function and a list, and returns the sum of the elements
+produced by applying the function to each member of the list:
+
+> argsum :: Num b => (a -> b) -> [a] -> b
+> argsum = sum <$$> map

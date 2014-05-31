@@ -1,6 +1,9 @@
-> module Data.Distribution (Distribution(..), Probability, probability, (<?), (?>), choose, (<~~), chooseMany) where
+> {-# LANGUAGE TupleSections #-}
+>
+> module Data.Distribution (Distribution(..), Probability, probability, (<?), (?>), choose, (<~~), chooseMany, uniform) where
 >
 > import Data.Maybe (fromMaybe)
+> import Data.Function (on)
 > import Data.Functor.Extras ((<$$>))
 > import Data.Ratio ((%))
 > import Control.Monad.Random (evalRand, fromList)
@@ -45,3 +48,9 @@ probability not be defined for that value, this likelihood is zero:
 >
 > (?>) :: Eq a => Distribution a -> a -> Probability
 > (?>) = flip probability
+
+`uniform` constructs a uniform discrete distribution over a given list:
+
+> uniform :: [a] -> Distribution a 
+> uniform = map =<< flip (,) . (1//) . length
+>   where (//) = (/) `on` toRational
