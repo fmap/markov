@@ -10,14 +10,14 @@ cabal-version:       >=1.10
 
 library
   exposed-modules: 
-    Example.Clinic
+    Example.Doctor
   other-extensions:
     GeneralizedNewtypeDeriving,
     LambdaCase,
     TemplateHaskell
   build-depends:        
     base,
-    markov,
+    markov-processes,
     memoize,
     random
   default-language: 

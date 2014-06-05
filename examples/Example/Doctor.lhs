@@ -1,8 +1,8 @@
 > {-# LANGUAGE LambdaCase, GeneralizedNewtypeDeriving, TemplateHaskell #-}
 >
-> module Example.Clinic (clinic, Health(..), Symptom(..), generator) where
+> module Example.Doctor (doctor, Health(..), Symptom(..), generator, evaluator, inspector, trainer) where
 >
-> import AI.Markov.HMM (HMM(..), observe, evaluate)
+> import AI.Markov.HMM (HMM(..), observe, evaluate, inspect, train)
 > import Data.Distribution (Probability)
 > import Data.Function.Memoize (deriveMemoizable)
 > import System.Random (StdGen(..), mkStdGen)
@@ -10,8 +10,7 @@
 This example has been cribbed wholesale from [Wikipedia's page on the 
 _Viterbi Algorithm_](https://en.wikipedia.org/wiki/Viterbi_algorithm).
 
-Consider a model health clinic. Out-patients are either healthy or
-feverous:
+Consider a doctor, who's patients are either healthy or feverous:
 
 > data Health = Healthy | Fever
 >   deriving (Eq, Enum, Bounded)
@@ -20,7 +19,7 @@ feverous:
 >   show Healthy = "Healthy"
 >   show Fever   = "Fever"
 
-Doctors diagnose patients based on reported symptoms. On each visit,
+Patients are diagnosed based on their reported symptoms. On each visit,
 patients report one of three health conditions; either that they feel
 normal, cold, or dizzy:
 
@@ -33,17 +32,18 @@ normal, cold, or dizzy:
 >   show Dizzy  = "Dizzy"
 
 The health of some patient can be treated as a discrete hidden Markov
-process. On each visit, the doctor can observe reports of symptoms,
-using these to diagnose the patient's health (the hidden state.) 
+process. On each visit, the patient reports his symptoms to the doctor,
+who uses these to diagnose their health (which cannot be observed
+directly.)
 
-The clinic know the population's general health condition, the prior
-likelihood of changing between health conditions, and the symptoms cited
-with or without fever on average. 
+The doctor knows the population's general health condition, the prior
+likelihood of each change in health conditions between each visit, and
+the symptoms cited with or without fever on average.
 
 Represented in Haskell:
 
-> clinic :: HMM Health Symptom
-> clinic = HMM
+> doctor :: HMM Health Symptom
+> doctor = HMM
 >   { states  = [Healthy, Fever]
 >   , symbols = [Normal, Cold, Dizzy]
 >   , start   = [(Healthy, 0.6), (Fever, 0.4)]
@@ -70,12 +70,28 @@ representing symptoms likely to be reported over a sequence of visits:
 > generator = observe seed
 
 Given a HMM and an observation sequence, we can use the forward procedure to
-determine the likelihood of that sequence given model. In cases where these
+determine the likelihood of that sequence given a model. In cases where these
 sequences are from a real signal source, this provides a measure of the model
-validity; in context: how well the clinic understands patient behaviour:
+validity; in context: how well the doctor understands patient behaviour:
 
 > evaluator :: HMM Health Symptom -> [Symptom] -> Probability
 > evaluator = evaluate
 >
 > deriveMemoizable ''Health
 > deriveMemoizable ''Symptom
+
+Given some HMM and an observation sequence, we can use the Viterbi
+algorithm to determine the hidden states most likely underlying those
+observations. These are the health conditions that best explain the
+patient's symptoms at each point.
+
+> inspector :: HMM Health Symptom -> [Symptom] -> [Health]
+> inspector = inspect
+
+In the the Baum-Welch procedure, given a set of observations and some existing
+model, the model parameters are re-estimated so as to better explain the
+observations. Contextuallt: a doctor revises his priors to more accurately
+diagnose patients.
+
+> trainer :: [Symptom] -> HMM Health Symptom
+> trainer = train Nothing doctor
