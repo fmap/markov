@@ -1,6 +1,6 @@
 > {-# LANGUAGE TupleSections #-}
 >
-> module Data.Distribution (Distribution(..), Probability, probability, (<?), (?>), choose, (<~~), chooseMany, uniform) where
+> module Data.Distribution (Distribution, Probability, probability, (<?), (?>), choose, (<~~), chooseMany, uniform) where
 >
 > import Data.Maybe (fromMaybe)
 > import Data.Function (on)

@@ -1,4 +1,11 @@
-> {-# LANGUAGE RecordWildCards, LambdaCase, TupleSections, TemplateHaskell, ViewPatterns #-}
+> {-# LANGUAGE LambdaCase                  #-}
+> {-# LANGUAGE RecordWildCards             #-}
+> {-# LANGUAGE TemplateHaskell             #-}
+> {-# LANGUAGE TupleSections               #-}
+> {-# LANGUAGE ViewPatterns                #-}
+> {-# OPTIONS_GHC -fno-warn-orphans        #-}
+> {-# OPTIONS_GHC -fno-warn-unused-binds   #-}
+> {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 > 
 > module AI.Markov.HMM (
 >   HMM(..),
@@ -11,13 +18,13 @@
 >   uniformHMM
 > ) where
 >
-> import Control.Applicative ((<$>), pure)
-> import Control.Monad (forM, ap)
+> import Control.Applicative ((<$>), (<*>), pure)
 > import Data.Bifunctor (Bifunctor(first))
-> import Data.Distribution (Distribution(..), Probability, (<?), (?>), (<~~), uniform)
+> import Data.Distribution (Distribution, Probability, (<?), (?>), (<~~), uniform)
 > import Data.Function (on)
 > import Data.Function.Extras (fixed)
 > import Data.Function.Memoize (Memoizable(..), deriveMemoize, deriveMemoizable, memoize4)
+> import Data.Functor.Infix ((<&>))
 > import Data.Maybe (fromJust)
 > import Data.List.Extras (pairs, argmax, argsum)
 > import Data.Ratio (Ratio)
@@ -281,7 +288,7 @@ $$\delta_n(i) = \argmax_{I_1,I_2,\ldots,I_{n-1}} P(I_1,I_2,\ldots,I_n=1,
 \bold{O}|HMM)$$:
 
 > viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
-> viterbiStep' 0 hmm@HMM{..} observations state = (pure state, start ?> state * emission state ?> head observations)
+> viterbiStep' 0 HMM{..}     observations state = (pure state, start ?> state * emission state ?> head observations)
 > viterbiStep' n hmm@HMM{..} observations state = argmax snd $ do
 >   predecessor <- states
 >   let (path, prob) = viterbiStep (n-1) hmm observations predecessor
@@ -349,7 +356,7 @@ parameters:
 
 > step :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> HMM state symbol
 > step hmm@HMM{..} observations = hmm
->   { start = ap (,) (smooth 1 hmm observations) <$> states
+>   { start = states <&> (,) <*> smooth 1 hmm observations
 >   , transition = \from -> flip fmap states $ \to -> (to,)
 >       $ argsum (\n -> xi n hmm observations from to) [0..t-1]
 >       / argsum (\n -> smooth n hmm observations from) [0..t-1]
