@@ -15,7 +15,8 @@ let
 in buildLocalCabalWithArgs {
   inherit src name;
   args = {
-    assertions = callPackage ./nix/assertions {};
-    memoize    = callPackage ./nix/memoize {};
+    assertions   = callPackage ./nix/assertions {};
+    memoize      = callPackage ./nix/memoize {};
+    functorInfix = callPackage ./nix/functor-infix {};
   };
 }

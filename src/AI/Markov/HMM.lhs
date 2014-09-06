@@ -18,7 +18,6 @@
 > import Data.Function (on)
 > import Data.Function.Extras (fixed)
 > import Data.Function.Memoize (Memoizable(..), deriveMemoize, deriveMemoizable, memoize4)
-> import Data.Functor.Extras (for)
 > import Data.Maybe (fromJust)
 > import Data.List.Extras (pairs, argmax, argsum)
 > import Data.Ratio (Ratio)
@@ -320,8 +319,8 @@ so bounded, meaning this is computable.
 >     [ st0 == st1
 >     , sy0 == sy1
 >     , i0  == i1
->     , on (==) (for st0) t0 t1
->     , on (==) (for st0) e0 e1
+>     , on (==) (`fmap` st0) t0 t1
+>     , on (==) (`fmap` st0) e0 e1
 >     ]
 
 `xi` determines the likelihood of being in states $i$ and $j$, at times
@@ -351,10 +350,10 @@ parameters:
 > step :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> HMM state symbol
 > step hmm@HMM{..} observations = hmm
 >   { start = ap (,) (smooth 1 hmm observations) <$> states
->   , transition = \from -> for states $ \to -> (to,) 
->       $ argsum (\n -> xi n hmm observations from to) [0..t-1] 
+>   , transition = \from -> flip fmap states $ \to -> (to,)
+>       $ argsum (\n -> xi n hmm observations from to) [0..t-1]
 >       / argsum (\n -> smooth n hmm observations from) [0..t-1]
->   , emission  = \from -> for symbols $ \emission -> (emission,)
+>   , emission  = \from -> flip fmap symbols $ \emission -> (emission,)
 >       $ argsum (\n -> b2i (observations!!n == emission) * smooth n hmm observations from) [0..t] 
 >       / argsum (\n -> smooth n hmm observations from) [0..t]
 >   } where (t,b2i) = (length observations - 1, \case { True -> 1; False -> 0})

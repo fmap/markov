@@ -4,7 +4,7 @@
 >
 > import Data.Maybe (fromMaybe)
 > import Data.Function (on)
-> import Data.Functor.Extras ((<$$>))
+> import Data.Functor.Infix ((<$$>))
 > import Data.Ratio ((%))
 > import Control.Monad.Random (evalRand, fromList)
 > import System.Random (RandomGen(..))

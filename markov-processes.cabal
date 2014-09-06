@@ -14,7 +14,6 @@ library
     AI.Markov.HMM,
     Data.Distribution
   other-modules:
-    Data.Functor.Extras,
     Data.Function.Extras,
     Data.List.Extras,
     System.Random.Extras
@@ -29,6 +28,7 @@ library
   build-depends:        
     base == 4.*,
     bifunctors,
+    functor-infix,
     memoize,
     MonadRandom,
     random
@@ -47,6 +47,7 @@ test-suite markov-tests
     base == 4.*,
     bifunctors,
     assertions,
+    functor-infix,
     markov-processes,
     memoize,
     random

@@ -1,7 +1,7 @@
 > module Data.List.Extras (pairs, argmax, argsum) where
 >
 > import Control.Applicative ((<*>))
-> import Data.Functor.Extras ((<$$>))
+> import Data.Functor.Infix ((<$$>))
 > import Data.Function (on)
 > import Data.List (maximumBy)
 
