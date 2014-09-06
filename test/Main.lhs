@@ -1,6 +1,6 @@
 > module Main (main) where
 >
-> import AI.Markov.HMM (HMM(..), sequenceP, evaluate, inspect)
+> import AI.Markov.HMM (sequenceP, evaluate, inspect)
 > import Control.Applicative ((<$>))
 > import Data.Bifunctor (Bifunctor(first))
 > import Example.Doctor (doctor, Health(..), Symptom(..))

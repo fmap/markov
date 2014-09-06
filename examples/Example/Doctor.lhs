@@ -5,7 +5,7 @@
 > import AI.Markov.HMM (HMM(..), observe, evaluate, inspect, train)
 > import Data.Distribution (Probability)
 > import Data.Function.Memoize (deriveMemoizable)
-> import System.Random (StdGen(..), mkStdGen)
+> import System.Random (StdGen, mkStdGen)
 
 This example has been cribbed wholesale from [Wikipedia's page on the 
 _Viterbi Algorithm_](https://en.wikipedia.org/wiki/Viterbi_algorithm).
@@ -44,13 +44,13 @@ Represented in Haskell:
 
 > doctor :: HMM Health Symptom
 > doctor = HMM
->   { states  = [Healthy, Fever]
->   , symbols = [Normal, Cold, Dizzy]
->   , start   = [(Healthy, 0.6), (Fever, 0.4)]
->   , transition = \case
+>   { hmmStates  = [Healthy, Fever]
+>   , hmmSymbols = [Normal, Cold, Dizzy]
+>   , hmmStart   = [(Healthy, 0.6), (Fever, 0.4)]
+>   , hmmTransition = \case
 >       Healthy -> [(Healthy, 0.7), (Fever, 0.3)]
 >       Fever   -> [(Healthy, 0.4), (Fever, 0.6)]
->   , emission = \case
+>   , hmmEmission = \case
 >       Healthy -> [(Normal, 0.5), (Cold, 0.4), (Dizzy, 0.1)]
 >       Fever   -> [(Normal, 0.1), (Cold, 0.3), (Dizzy, 0.6)]
 >   }

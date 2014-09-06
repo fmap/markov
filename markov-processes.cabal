@@ -12,6 +12,7 @@ cabal-version:       >=1.10
 library
   exposed-modules: 
     AI.Markov.HMM,
+    AI.Markov.MM,
     Data.Distribution
   other-modules:
     Data.Function.Extras,

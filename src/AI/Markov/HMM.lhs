@@ -1,4 +1,6 @@
+> {-# LANGUAGE FunctionalDependencies      #-}
 > {-# LANGUAGE LambdaCase                  #-}
+> {-# LANGUAGE MultiParamTypeClasses       #-}
 > {-# LANGUAGE RecordWildCards             #-}
 > {-# LANGUAGE TemplateHaskell             #-}
 > {-# LANGUAGE TupleSections               #-}
@@ -15,7 +17,8 @@
 >   inspect,
 >   train,
 >   Limit(..),
->   uniformHMM
+>   uniformHMM,
+>   HMMable(..)
 > ) where
 >
 > import Control.Applicative ((<$>), (<*>), pure)
@@ -55,30 +58,30 @@ More formally, a HMM is a five-tuple consisting of:
 
   1. The distinct states of the process, S. (|S| = N)
 
->   { states :: [state]
+>   { hmmStates :: [state]
 
   2. A finite dictionary of possible observations, E.
 
->   , symbols :: [symbol]
+>   , hmmSymbols :: [symbol]
 
   3. An initial state distribution, the likelihood of the process
      starting in each state s ∈ S.
 
->   , start :: Distribution state
+>   , hmmStart :: Distribution state
 
   4. A transition distribution; given some current state i ∈ S, this
      provides the likelihood of the process next transiting to any
      j ∈ S. By the Markov assumption, this probability is dependent only
      on i.
 
->   , transition :: state -> Distribution state
+>   , hmmTransition :: state -> Distribution state
 
   5. The observation symbol distributions; given some s ∈ S, this
      provides the likelihood of every observation o ∈ E being observed
      at that i. By the independence assumption, the output observation
      at any time is dependent only on the current state.
 
->   , emission :: state -> Distribution symbol
+>   , hmmEmission :: state -> Distribution symbol
 >   }
 
 Having characterised some sequence generator as a HMM (and so given a
@@ -88,13 +91,13 @@ from demonstrated statistical properties. This is particularly useful in
 cases where gathering raw data is expensive.
 
 > observe :: RandomGen seed => seed -> HMM state symbol -> [symbol]
-> observe seed hmm@HMM{..} = observe' ns hmm (start <~~ ts)
+> observe seed hmm@HMM{..} = observe' ns hmm (hmmStart <~~ ts)
 >   where (ts, ns) = split seed
 >
 > observe' :: RandomGen seed => seed -> HMM state symbol -> state -> [symbol]
 > observe' seed hmm@HMM{..} state = obs : observe' s2 hmm nxt
 >   where (s0,s1,s2) = split3 seed
->         (obs, nxt) = (emission state <~~ s0, transition state <~~ s1)
+>         (obs, nxt) = (hmmEmission state <~~ s0, hmmTransition state <~~ s1)
 
 Rabiner [^rabiner1989] outlined three fundamental inference problems for HMMs:
 
@@ -112,22 +115,22 @@ First, some precursors; given a set of states, `sequencesOfN` finds all
 $n$-length state sequences:
 
 > sequencesOfN :: Int -> HMM state symbol -> [[state]]
-> sequencesOfN n = sequence . replicate n . states
+> sequencesOfN n = sequence . replicate n . hmmStates
 
 `sequenceP` determines the likelihood of a state sequence, given a model;
 $P(I|HMM)=P(I_1)P(I_2|I_1)\ldots P(I_r|I_{r-1})$:
 
 > sequenceP :: Eq state => HMM state symbol -> [state] -> Probability
 > sequenceP HMM{..} sequence = product 
->                            $ head sequence <? start 
->                            : map (uncurry (?>) . first transition) (pairs sequence)
+>                            $ head sequence <? hmmStart
+>                            : map (uncurry (?>) . first hmmTransition) (pairs sequence)
 
 `sequenceObservationsP` computes the likelihood of an observation sequence 
 given a state sequence; $P(O|I, HMM)=P(O_1|I_1)P(O_2|I_2) 
 \ldots P(O_n|I_n)$:
 
 > sequenceObservationsP :: Eq symbol => HMM state symbol -> [(state, symbol)] -> Probability
-> sequenceObservationsP HMM{..} = product . map (uncurry (?>) . first emission)
+> sequenceObservationsP HMM{..} = product . map (uncurry (?>) . first hmmEmission)
 
 Using the above primitives, we can now express the procedure:
 
@@ -162,11 +165,11 @@ having observed $\bold{O}$ and being in state $i$ after time $n$ --
 $\alpha_n(i) = P(O_1,O_2,\ldots,O_n,I_n=i|HMM)$:
 
 > forwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
-> forwardVariable' 0 HMM{..} observations state = (state <? start) * (head observations <? emission state)
-> forwardVariable' t hmm@HMM{..} observations state = (*) (observations !! t <? emission state) . sum $ do
->   predecessor <- states
+> forwardVariable' 0 HMM{..} observations state = (state <? hmmStart) * (head observations <? hmmEmission state)
+> forwardVariable' t hmm@HMM{..} observations state = (*) (observations !! t <? hmmEmission state) . sum $ do
+>   predecessor <- hmmStates
 >   let a = forwardVariable (t-1) hmm observations predecessor
->       b = state <? transition predecessor
+>       b = state <? hmmTransition predecessor
 >   return $ a * b
 
 Below, we compute the terminal forward variable for each state in the HMM,
@@ -188,7 +191,7 @@ sum of terminal forward variables for each state yields our desired probability
 -- $P(O_1,O_2,\ldots,O_n|HMM) = \sum_{n=1}^{|I|} \alpha_{|\bold{O}|}(I_n)$:
 
 > forward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Probability
-> forward hmm@HMM{..} observations = forwardVariable t hmm observations `argsum` states
+> forward hmm@HMM{..} observations = forwardVariable t hmm observations `argsum` hmmStates
 >   where t = pred $ length observations
 >
 > evaluate :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Probability
@@ -223,9 +226,9 @@ of observing a sequence of succeeding observations from some known state
 
 > backwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > backwardVariable' n HMM{..} observations state = if succ n == length observations then 1 else sum $ do
->   successor <- states
->   let a = transition state ?> successor
->       b = emission successor ?> (observations !! n)
+>   successor <- hmmStates
+>   let a = hmmTransition state ?> successor
+>       b = hmmEmission successor ?> (observations !! n)
 >       c = backwardVariable (n+1) HMM{..} observations successor
 >   return $ a * b * c
 >
@@ -258,7 +261,7 @@ smoothed probability value:
 > smooth :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > smooth n hmm@HMM{..} observations state = numerator / denominator
 >   where numerator         = forwardBackward n state
->         denominator       = sum $ zipWith forwardBackward [0..] states
+>         denominator       = sum $ zipWith forwardBackward [0..] hmmStates
 >         forwardBackward n = forwardBackwardVariable n hmm observations
 
 By maximising the smoothing value at each position in the sequence, we
@@ -267,7 +270,7 @@ can find the most likely state at each position:
 > forwardBackward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > forwardBackward hmm@HMM{..} observations = do
 >   position <- [0..pred $ length observations]
->   return $ argmax (smooth position hmm observations) states
+>   return $ argmax (smooth position hmm observations) hmmStates
 
 This is a bad criterion, though; in considering only individual states,
 we neglect information about the probability that state sequences will
@@ -288,11 +291,11 @@ $$\delta_n(i) = \argmax_{I_1,I_2,\ldots,I_{n-1}} P(I_1,I_2,\ldots,I_n=1,
 \bold{O}|HMM)$$:
 
 > viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
-> viterbiStep' 0 HMM{..}     observations state = (pure state, start ?> state * emission state ?> head observations)
+> viterbiStep' 0 HMM{..}     observations state = (pure state, hmmStart ?> state * hmmEmission state ?> head observations)
 > viterbiStep' n hmm@HMM{..} observations state = argmax snd $ do
->   predecessor <- states
+>   predecessor <- hmmStates
 >   let (path, prob) = viterbiStep (n-1) hmm observations predecessor
->       likelihood   = prob * transition predecessor ?> state * emission state ?> (observations !! n)
+>       likelihood   = prob * hmmTransition predecessor ?> state * hmmEmission state ?> (observations !! n)
 >   return $ (state:path, likelihood)
 >
 > viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
@@ -304,7 +307,7 @@ Viterbi step over $S$ yields the desired state sequence:
 > viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > viterbi hmm@HMM{..} observations = reverse . fst . argmax snd $ do
 >   let t = length observations - 1
->   terminal <- states
+>   terminal <- hmmStates
 >   return $ viterbiStep t hmm observations terminal
 >
 > inspect :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
@@ -346,21 +349,21 @@ $n$ and $n+1$ respectively, provided a HMM and observation sequence:
 
 > xi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> state -> Probability
 > xi n hmm@HMM{..} observations i j = forwardVariable n hmm observations i
->                                   * transition i ?> j
+>                                   * hmmTransition i ?> j
 >                                   * backwardVariable (n+1) hmm observations j
->                                   * observations !! (n+1) <? emission j
->                                   / forwardBackwardVariable n hmm observations `argsum` states
+>                                   * observations !! (n+1) <? hmmEmission j
+>                                   / forwardBackwardVariable n hmm observations `argsum` hmmStates
 
 Between `xi` and the above smoothing function, we can re-estimate HMM
 parameters:
 
 > step :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> HMM state symbol
 > step hmm@HMM{..} observations = hmm
->   { start = states <&> (,) <*> smooth 1 hmm observations
->   , transition = \from -> flip fmap states $ \to -> (to,)
+>   { hmmStart = hmmStates <&> (,) <*> smooth 1 hmm observations
+>   , hmmTransition = \from -> hmmStates <&> \to -> (to,)
 >       $ argsum (\n -> xi n hmm observations from to) [0..t-1]
 >       / argsum (\n -> smooth n hmm observations from) [0..t-1]
->   , emission  = \from -> flip fmap symbols $ \emission -> (emission,)
+>   , hmmEmission = \from -> hmmSymbols <&> \emission -> (emission,)
 >       $ argsum (\n -> b2i (observations!!n == emission) * smooth n hmm observations from) [0..t] 
 >       / argsum (\n -> smooth n hmm observations from) [0..t]
 >   } where (t,b2i) = (length observations - 1, \case { True -> 1; False -> 0})
@@ -398,12 +401,74 @@ sensible option is to set the parameters to be uniform, that is:
 
 > uniformHMM :: [state] -> [symbol] -> HMM state symbol
 > uniformHMM states symbols = HMM
->   { states     = states
->   , symbols    = symbols
->   , start      = uniform states
->   , transition = const $ uniform states
->   , emission   = const $ uniform symbols
+>   { hmmStates     = states
+>   , hmmSymbols    = symbols
+>   , hmmStart      = uniform states
+>   , hmmTransition = const $ uniform states
+>   , hmmEmission   = const $ uniform symbols
 >   } 
+
+First-order HMMs are flexible enough to be used to represent simple Markov
+processes (without hidden states), as well as higher-order HMMs (in which we
+relax the Markov assumption -- transition probabilities can depend on more than
+one prior state. In this variant, the start distribution is the prior
+distribution for each m-length sequence of states:
+
+  * Higher-order HMMs can be represented using first-order models by mapping
+    the alphabet from individual state values to m-tuples of those states,
+    where each tuple represents a sequence of states.
+
+      data HMM2 state symbol = HMM2
+        { hmm2States     :: [state]
+        , hmm2Symbols    :: [symbol]
+        , hmm2Start      :: Distribution (state, state)
+        , hmm2Transition :: (state, state) -> Distribution (state, state)
+        , hmm2Emission   :: (state, state) -> Distribution symbol
+        }
+
+      toHMM :: HMM2 state symbol -> HMM state symbol
+      toHMM HMM2{..} = HMM
+        { hmmStates     = ap (,) id hmm2States
+        , hmmSymbols    = hmm2Symbols
+        , hmmStart      = hmm2Start
+        , hmmTransition = hmm2Transition
+        , hmmEmission   = hmm2Emission
+        }
+
+      HMM2.observe :: RandomGen seed => seed -> HMM2 state symbol -> [symbol]
+      HMM2.observe seed = observe seed . toHMM
+
+  * To represent a simple Markov process with a HMM, construct the HMM with
+    common state and symbol dictionaries, and the emission distribution such
+    that states produce their corresponding symbol with certainty.
+
+      data MM state = MM
+        { mmStates     :: [state]
+        , mmStart      :: Distribution state
+        , mmTransition :: state -> Distribution state
+        }
+
+      toHMM :: MM state -> HMM state state
+      toHMM MM{..} = HMM
+        { hmmStates      = mmStates
+        , hmmSymbols     = mmStates
+        , hmmTransition  = mmTransition
+        , hmmEmission    = \position -> mmStates <&> \state -> (state, if state =  = position then 1 else 0)
+        }
+
+      MM.observe :: RandomGen seed => seed -> MM state -> [state]
+      MM.observe seed = observe seed . toHMM
+
+    Which themselves can be mapped to higher-order MMs, analogously to the
+    procedure for higher-order HMMs.
+
+At the cost of efficiency, we can write considerably less code! To this end, we
+here define a typeclass to capture translations between HMMs and analagous
+structures:
+
+> class HMMable process state symbol | process -> state symbol where
+>   toHMM   :: process -> HMM state symbol
+>   fromHMM :: HMM state symbol -> process
 
   [^rabiner1989]: Lawrence R.  Rabiner, _A Tutorial on Hidden Markov Models and
                   Selected Applications in Speech Recognition_, Proceedings of
