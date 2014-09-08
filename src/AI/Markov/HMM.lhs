@@ -428,7 +428,7 @@ distribution for each m-length sequence of states:
 
       toHMM :: HMM2 state symbol -> HMM state symbol
       toHMM HMM2{..} = HMM
-        { hmmStates     = ap (,) id hmm2States
+        { hmmStates     = liftM2 (,) hmm2States hmm2States
         , hmmSymbols    = hmm2Symbols
         , hmmStart      = hmm2Start
         , hmmTransition = hmm2Transition
