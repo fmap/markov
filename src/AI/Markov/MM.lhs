@@ -37,9 +37,9 @@ processes, and all Markov processes can be mapped to hidden Markov processes.
 
 A Markov process is a hidden Markov process in which the state and symbol
 dictionaries are are equivalent, and the emission distribution is such that
-states produce their corresponding symbol with certainty. When we're only
+states produce their corresponding symbol with certainty. And when we're only
 concerned with state transitions, we can forgo the emission probabilities of
-a HMM, and treat it as a MM.
+a HMM, and construct a valid MM.
 
 We can exploit these morphisms by first instancing the HMMable typeclass, and
 then defining functions for inspection, parameter estimation, etc, for MMs in
