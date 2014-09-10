@@ -13,9 +13,11 @@
 >
 > import AI.Markov.HMM (HMM(..), HMMable(..), Limit, uniformHMM)
 > import qualified AI.Markov.HMM as HMM (observe, evaluate, sequenceP, train)
-> import Data.Function.Memoize (Memoizable(..))
-> import Data.Functor.Infix ((<&>), (<$$>))
 > import Data.Distribution (Distribution, Probability)
+> import Data.Function.Memoize (Memoizable(..))
+> import Data.Functor.Infix ((<$$>))
+> import Data.Set (Set)
+> import Data.Set.Extras ((<~>))
 > import System.Random (RandomGen)
 
 Structurally, a Markov model can be thought of as a finite state machine in
@@ -26,7 +28,7 @@ the an input alphabet, a set of probability distributions 'mmTransition'
 determine the likelihood of transiting from any one state to another.
 
 > data MM state = MM
->   { mmStates     :: [state]
+>   { mmStates     :: Set state
 >   , mmStart      :: Distribution state
 >   , mmTransition :: state -> Distribution state
 >   }
@@ -47,13 +49,13 @@ terms of their HMM implementations.
 
 Look:
 
-> instance Eq state => HMMable (MM state) state state where
+> instance (Eq state, Ord state) => HMMable (MM state) state state where
 >   toHMM MM{..} = HMM
 >     { hmmStates      = mmStates
 >     , hmmSymbols     = mmStates
 >     , hmmStart       = mmStart
 >     , hmmTransition  = mmTransition
->     , hmmEmission    = \position -> mmStates <&> \state -> (state, if state == position then 1 else 0)
+>     , hmmEmission    = \position -> mmStates <~> \state -> (state, if state == position then 1 else 0)
 >     }
 >   fromHMM HMM{..} = MM
 >     { mmStates     = hmmStates
@@ -61,19 +63,19 @@ Look:
 >     , mmTransition = hmmTransition
 >     }
 >
-> observe :: Eq state => RandomGen seed => seed -> MM state -> [state]
+> observe :: Eq state => Ord state => RandomGen seed => seed -> MM state -> [state]
 > observe seed = HMM.observe seed . toHMM
 >
-> sequenceP :: Eq state => MM state -> [state] -> Probability
+> sequenceP :: Eq state => Ord state => MM state -> [state] -> Probability
 > sequenceP = HMM.sequenceP . toHMM
 >
-> evaluate :: Memoizable state => Eq state => Enum state => Bounded state => MM state -> [state] -> Probability
+> evaluate :: Memoizable state => Eq state => Ord state => Enum state => Bounded state => MM state -> [state] -> Probability
 > evaluate = HMM.evaluate . toHMM
 >
-> train :: Memoizable state => Eq state => Enum state => Bounded state => Maybe Limit -> MM state -> [state] -> MM state
+> train :: Memoizable state => Eq state => Ord state => Enum state => Bounded state => Maybe Limit -> MM state -> [state] -> MM state
 > train limit = fromHMM <$$> HMM.train limit . toHMM
 >
-> uniformMM :: Eq state => [state] -> MM state
+> uniformMM :: Eq state => Ord state => Set state -> MM state
 > uniformMM states = fromHMM $ uniformHMM states states
 
 Neat, right? At cost of efficiency, we saved a few days of research and programming.

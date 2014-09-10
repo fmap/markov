@@ -17,6 +17,7 @@ library
   other-modules:
     Data.Function.Extras,
     Data.List.Extras,
+    Data.Set.Extras,
     System.Random.Extras
   other-extensions:
     LambdaCase,
@@ -29,6 +30,7 @@ library
   build-depends:        
     base == 4.*,
     bifunctors,
+    containers,
     functor-infix,
     memoize,
     MonadRandom,
@@ -50,6 +52,7 @@ test-suite markov-tests
     base == 4.*,
     bifunctors,
     assertions,
+    containers,
     functor-infix,
     markov-processes,
     memoize,

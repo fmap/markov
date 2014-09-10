@@ -1,14 +1,16 @@
 > {-# LANGUAGE FunctionalDependencies      #-}
+> {-# LANGUAGE InstanceSigs                #-}
 > {-# LANGUAGE LambdaCase                  #-}
 > {-# LANGUAGE MultiParamTypeClasses       #-}
 > {-# LANGUAGE RecordWildCards             #-}
 > {-# LANGUAGE TemplateHaskell             #-}
 > {-# LANGUAGE TupleSections               #-}
+> {-# LANGUAGE ScopedTypeVariables         #-}
 > {-# LANGUAGE ViewPatterns                #-}
 > {-# OPTIONS_GHC -fno-warn-orphans        #-}
 > {-# OPTIONS_GHC -fno-warn-unused-binds   #-}
 > {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
-> 
+>
 > module AI.Markov.HMM (
 >   HMM(..),
 >   observe,
@@ -21,16 +23,19 @@
 >   HMMable(..)
 > ) where
 >
-> import Control.Applicative ((<$>), (<*>), pure)
+> import Prelude hiding (sum, sequence, map)
+> import Control.Applicative ((<*>), pure)
 > import Data.Bifunctor (Bifunctor(first))
 > import Data.Distribution (Distribution, Probability, (<?), (?>), (<~~), uniform)
 > import Data.Function (on)
 > import Data.Function.Extras (fixed)
 > import Data.Function.Memoize (Memoizable(..), deriveMemoize, deriveMemoizable, memoize4)
-> import Data.Functor.Infix ((<&>))
+> import Data.List.Extras (pairs)
+> import qualified Data.List.Extras as List (argsum)
 > import Data.Maybe (fromJust)
-> import Data.List.Extras (pairs, argmax, argsum)
 > import Data.Ratio (Ratio)
+> import Data.Set (Set, map)
+> import Data.Set.Extras (sum, argmax, argsum, sequence, (<~>))
 > import System.Random (RandomGen(..))
 > import System.Random.Extras (split3)
 
@@ -58,11 +63,11 @@ More formally, a HMM is a five-tuple consisting of:
 
   1. The distinct states of the process, S. (|S| = N)
 
->   { hmmStates :: [state]
+>   { hmmStates :: Set state
 
   2. A finite dictionary of possible observations, E.
 
->   , hmmSymbols :: [symbol]
+>   , hmmSymbols :: Set symbol
 
   3. An initial state distribution, the likelihood of the process
      starting in each state s ∈ S.
@@ -90,11 +95,11 @@ output without collecting any further data; inferring future behaviour
 from demonstrated statistical properties. This is particularly useful in
 cases where gathering raw data is expensive.
 
-> observe :: RandomGen seed => seed -> HMM state symbol -> [symbol]
+> observe :: RandomGen seed => Ord state => Ord symbol => seed -> HMM state symbol -> [symbol]
 > observe seed hmm@HMM{..} = observe' ns hmm (hmmStart <~~ ts)
 >   where (ts, ns) = split seed
 >
-> observe' :: RandomGen seed => seed -> HMM state symbol -> state -> [symbol]
+> observe' :: RandomGen seed => Ord state => Ord symbol => seed -> HMM state symbol -> state -> [symbol]
 > observe' seed hmm@HMM{..} state = obs : observe' s2 hmm nxt
 >   where (s0,s1,s2) = split3 seed
 >         (obs, nxt) = (hmmEmission state <~~ s0, hmmTransition state <~~ s1)
@@ -111,42 +116,40 @@ computing the likelihood our observations were produced by each possible
 state sequence $(I_n)_{n=1}^T$ (of appropriate length), and summing the result
 probabilities. I.e: $$P(O|HMM)=\sum_{j=0}^{n}P(O|I_n,HMM)P(I_n|HMM)$$
 
-First, some precursors; given a set of states, `sequencesOfN` finds all
+First, some precursors; given a set of states, `sequencesOfN` finds the set of
 $n$-length state sequences:
 
-> sequencesOfN :: Int -> HMM state symbol -> [[state]]
+> sequencesOfN :: Ord state => Int -> HMM state symbol -> Set [state]
 > sequencesOfN n = sequence . replicate n . hmmStates
 
 `sequenceP` determines the likelihood of a state sequence, given a model;
 $P(I|HMM)=P(I_1)P(I_2|I_1)\ldots P(I_r|I_{r-1})$:
 
-> sequenceP :: Eq state => HMM state symbol -> [state] -> Probability
-> sequenceP HMM{..} sequence = product 
+> sequenceP :: Eq state => Ord state => HMM state symbol -> [state] -> Probability
+> sequenceP HMM{..} sequence = product
 >                            $ head sequence <? hmmStart
->                            : map (uncurry (?>) . first hmmTransition) (pairs sequence)
+>                            : fmap (uncurry (?>) . first hmmTransition) (pairs sequence)
 
-`sequenceObservationsP` computes the likelihood of an observation sequence 
-given a state sequence; $P(O|I, HMM)=P(O_1|I_1)P(O_2|I_2) 
+`sequenceObservationsP` computes the likelihood of an observation sequence
+given a state sequence; $P(O|I, HMM)=P(O_1|I_1)P(O_2|I_2)
 \ldots P(O_n|I_n)$:
 
-> sequenceObservationsP :: Eq symbol => HMM state symbol -> [(state, symbol)] -> Probability
-> sequenceObservationsP HMM{..} = product . map (uncurry (?>) . first hmmEmission)
+> sequenceObservationsP :: Eq symbol => Ord state => Ord symbol => HMM state symbol -> [(state, symbol)] -> Probability
+> sequenceObservationsP HMM{..} = product . fmap (uncurry (?>) . first hmmEmission)
 
 Using the above primitives, we can now express the procedure:
 
-> inefficientEvaluate :: (Eq state, Eq symbol) => HMM state symbol -> [symbol] -> Probability
-> inefficientEvaluate hmm observations = sum $ zipWith (*) statesP statesObsP
->   where states     = sequencesOfN (length observations) hmm
->         statesP    = sequenceP hmm <$> states
->         statesObsP = sequenceObservationsP hmm <$> map (`zip` observations) states
+> inefficientEvaluate :: Eq state => Eq symbol => Ord state => Ord symbol => HMM state symbol -> [symbol] -> Probability
+> inefficientEvaluate hmm observations = sum $ sequencesOfN (length observations) hmm <~> \sequence ->
+>   sequenceP hmm sequence * sequenceObservationsP hmm (sequence `zip` observations)
 
 But this has abysmal runtime-performance! Let $N$ be the number of
 states, and $T$ equal to the number of observations (and thus the
 length of each state sequence); there are thus $N^T$ possible state
-sequences, and for each sequence we require about $2T$ calculations 
-(Rabiner's [^rabiner1989] figure, I haven't validated this); meaning 
-$2TN^T$ calculations in total: 
-  
+sequences, and for each sequence we require about $2T$ calculations
+(Rabiner's [^rabiner1989] figure, I haven't validated this); meaning
+$2TN^T$ calculations in total:
+
   $N$   $T$   $2TN^T$
   ----  ----  ------------------
   5     100   $\approx 10^{72}$
@@ -157,29 +160,30 @@ Given this profile, this function is only included here for didactic
 purposes, and is not exported by this module.
 
 A more efficient solution exists in the _forward algorithm_, which
-arranges the computation so that redundant calculations may be cached: 
+arranges the computation so that redundant calculations may be cached:
 
 Given a partial observation sequence $\bold{O} = {O_1,O_2,\ldots,O_n}$ and
 a terminal state $i$, the _forward variable_ provides the likelihood of
 having observed $\bold{O}$ and being in state $i$ after time $n$ --
 $\alpha_n(i) = P(O_1,O_2,\ldots,O_n,I_n=i|HMM)$:
 
-> forwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> forwardVariable' :: Memoizable state => Memoizable symbol => Eq state => Eq symbol => Ord state => Ord symbol => Enum state => Bounded state => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > forwardVariable' 0 HMM{..} observations state = (state <? hmmStart) * (head observations <? hmmEmission state)
-> forwardVariable' t hmm@HMM{..} observations state = (*) (observations !! t <? hmmEmission state) . sum $ do
->   predecessor <- hmmStates
+> forwardVariable' t hmm@HMM{..} observations state = (*) (observations !! t <? hmmEmission state) . sum $ hmmStates <~> \predecessor -> do
 >   let a = forwardVariable (t-1) hmm observations predecessor
 >       b = state <? hmmTransition predecessor
->   return $ a * b
+>   a * b
 
 Below, we compute the terminal forward variable for each state in the HMM,
 using a constant set of observations. As the computation of `a` is independent
 of the state under consideration, it's time-saving to memoise this value:
 
-> forwardVariable :: (Enum state, Bounded state, Eq state, Eq symbol, Memoizable state, Memoizable symbol) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> forwardVariable :: Enum state => Bounded state => Eq state => Eq symbol => Ord state => Ord symbol => Memoizable state => Memoizable symbol => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > forwardVariable = memoize4 forwardVariable'
 >
 > $(return []) -- Since GHC 7.8, nothing is within scope of the first splice.
+>
+> deriveMemoizable ''Set
 >
 > instance (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Memoizable (HMM state symbol) where
 >   memoize = $(deriveMemoize ''HMM)
@@ -190,11 +194,11 @@ As the final observation must be emitted in some (unknown) state, taking the
 sum of terminal forward variables for each state yields our desired probability
 -- $P(O_1,O_2,\ldots,O_n|HMM) = \sum_{n=1}^{|I|} \alpha_{|\bold{O}|}(I_n)$:
 
-> forward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Probability
+> forward :: Memoizable state => Memoizable symbol => Eq state => Eq symbol => Ord state => Ord symbol => Enum state => Bounded state => HMM state symbol -> [symbol] -> Probability
 > forward hmm@HMM{..} observations = forwardVariable t hmm observations `argsum` hmmStates
 >   where t = pred $ length observations
 >
-> evaluate :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> Probability
+> evaluate :: Memoizable state => Memoizable symbol => Eq state => Eq symbol => Enum state => Ord state => Ord symbol => Bounded state => HMM state symbol -> [symbol] -> Probability
 > evaluate = forward
 
 This evaluation algorithm requires about $TN^2$ calculations, making it
@@ -224,15 +228,14 @@ variable (namely, the backward variable), that describes the likelihood
 of observing a sequence of succeeding observations from some known state
 -- $\beta_n(i) = P(O_{n+1},O_{n+2},\ldots,O_{T}|I_n=i,HMM)$:
 
-> backwardVariable' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
-> backwardVariable' n HMM{..} observations state = if succ n == length observations then 1 else sum $ do
->   successor <- hmmStates
+> backwardVariable' :: Memoizable state => Memoizable symbol => Eq state => Eq symbol => Ord state => Ord symbol => Enum state => Bounded state => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> backwardVariable' n HMM{..} observations state = if succ n == length observations then 1 else sum $ hmmStates <~> \successor -> do
 >   let a = hmmTransition state ?> successor
 >       b = hmmEmission successor ?> (observations !! n)
 >       c = backwardVariable (n+1) HMM{..} observations successor
->   return $ a * b * c
+>   a * b * c
 >
-> backwardVariable :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> backwardVariable :: Memoizable state => Memoizable symbol => Eq state => Eq symbol => Ord state => Ord symbol => Enum state => Bounded state => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > backwardVariable = memoize4 backwardVariable'
 
 To recap: the forward variable determines the likelihood of
@@ -243,31 +246,30 @@ reached at time $n$, and the succeeding observation sequence being
 $O_{n+1},O_{n+2},\ldots,O_{T}$.
 
 Between them we can compute, provided a model and observation sequence,
-the likelihood of some state $i$ given the observation sequence--the
-smoothed probability value: 
+the likelihood of being in some state $i$ at time $n$ given the full
+observation sequence--the smoothed probability value:
 
   \begin{align*}
     \gamma_n(i)
-      \\ &=\frac{\alpha_n(i)\beta_n(i)}{\sum^{N}_{s=1}\alpha_n{s}\beta_n{s}} 
-      \\ &=\frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)}{\sum^{N}_{s=1} P(I_n=s,O_1,O_2,\ldots,O_T|HMM)} 
-      \\ &=\frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)} {P(O_1,O_2,\ldots,O_T|HMM)} 
       \\ &=P(I_n=i|O_1,O_2,\ldots,O_T,HMM)
+      \\ &=\frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)} {P(O_1,O_2,\ldots,O_T|HMM)}
+      \\ &=\frac{P(I_n=i,O_1,O_2,\ldots,O_T|HMM)}{\sum^{N}_{s=1} P(I_n=s,O_1,O_2,\ldots,O_T|HMM)}
+      \\ &=\frac{\alpha_n(i)\beta_n(i)}{\sum^{N}_{s=1}\alpha_n{s}\beta_n{s}}
   \end{align*}
 
-> forwardBackwardVariable :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
-> forwardBackwardVariable n hmm observations state = forwardVariable n hmm observations state 
+> forwardBackwardVariable :: Memoizable state => Memoizable symbol => Eq state => Eq symbol => Ord state => Ord symbol => Enum state => Bounded state => Int -> HMM state symbol -> [symbol] -> state -> Probability
+> forwardBackwardVariable n hmm observations state = forwardVariable n hmm observations state
 >                                                  * backwardVariable n hmm observations state
-> 
-> smooth :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> Probability
+>
+> smooth :: Memoizable state => Memoizable symbol => Eq state => Eq symbol => Ord state => Ord symbol => Enum state => Bounded state => Int -> HMM state symbol -> [symbol] -> state -> Probability
 > smooth n hmm@HMM{..} observations state = numerator / denominator
->   where numerator         = forwardBackward n state
->         denominator       = sum $ zipWith forwardBackward [0..] hmmStates
->         forwardBackward n = forwardBackwardVariable n hmm observations
+>   where numerator         = forwardBackwardVariable n hmm observations state
+>         denominator       = sum (hmmStates <~> forwardBackwardVariable n hmm observations)
 
 By maximising the smoothing value at each position in the sequence, we
 can find the most likely state at each position:
 
-> forwardBackward :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
+> forwardBackward :: Memoizable state => Memoizable symbol => Eq state => Ord state => Ord symbol => Eq symbol => Enum state => Bounded state => HMM state symbol -> [symbol] -> [state]
 > forwardBackward hmm@HMM{..} observations = do
 >   position <- [0..pred $ length observations]
 >   return $ argmax (smooth position hmm observations) hmmStates
@@ -290,27 +292,25 @@ for the first $n$ observations and terminating at state $i$; that is:
 $$\delta_n(i) = \argmax_{I_1,I_2,\ldots,I_{n-1}} P(I_1,I_2,\ldots,I_n=1,
 \bold{O}|HMM)$$:
 
-> viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
+> viterbiStep' :: (Memoizable state, Memoizable symbol, Eq state, Ord state, Ord symbol, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
 > viterbiStep' 0 HMM{..}     observations state = (pure state, hmmStart ?> state * hmmEmission state ?> head observations)
-> viterbiStep' n hmm@HMM{..} observations state = argmax snd $ do
->   predecessor <- hmmStates
+> viterbiStep' n hmm@HMM{..} observations state = argmax snd $ hmmStates <~> \predecessor -> do
 >   let (path, prob) = viterbiStep (n-1) hmm observations predecessor
 >       likelihood   = prob * hmmTransition predecessor ?> state * hmmEmission state ?> (observations !! n)
->   return $ (state:path, likelihood)
+>   (state:path, likelihood)
 >
-> viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
+> viterbiStep :: (Memoizable state, Memoizable symbol, Eq state, Ord state, Ord symbol, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> ([state], Probability)
 > viterbiStep = memoize4 viterbiStep'
 
 As the final observation must be emitted in some state, maximising the
 Viterbi step over $S$ yields the desired state sequence:
 
-> viterbi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
-> viterbi hmm@HMM{..} observations = reverse . fst . argmax snd $ do
+> viterbi :: (Memoizable state, Memoizable symbol, Eq state, Ord state, Ord symbol, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
+> viterbi hmm@HMM{..} observations = reverse . fst . argmax snd $ hmmStates <~> \terminal -> do
 >   let t = length observations - 1
->   terminal <- hmmStates
->   return $ viterbiStep t hmm observations terminal
+>   viterbiStep t hmm observations terminal
 >
-> inspect :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
+> inspect :: (Memoizable state, Memoizable symbol, Eq state, Ord state, Ord symbol, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> [state]
 > inspect = viterbi
 
   3. Training: given some observation sequence, determine the parameters of
@@ -324,13 +324,13 @@ probability distributions. Though we can't in general define equality
 over `(->)`, here in both cases the domain is the state dictionary, and
 so bounded, meaning this is computable.
 
-> instance (Eq state, Eq symbol) => Eq (HMM state symbol) where
+> instance (Eq state, Ord state, Eq symbol, Ord symbol) => Eq (HMM state symbol) where
 >   HMM st0 sy0 i0 t0 e0 == HMM st1 sy1 i1 t1 e1 = and
 >     [ st0 == st1
 >     , sy0 == sy1
 >     , i0  == i1
->     , on (==) (`fmap` st0) t0 t1
->     , on (==) (`fmap` st0) e0 e1
+>     , on (==) (`map` st0) t0 t1
+>     , on (==) (`map` st0) e0 e1
 >     ]
 
 `xi` determines the likelihood of being in states $i$ and $j$, at times
@@ -338,7 +338,7 @@ $n$ and $n+1$ respectively, provided a HMM and observation sequence:
 
   \begin{align*}
     \xi_n(i,j)
-      \\ &=P(I_n=i,I_{n+1}=j|O_1,O_2,\ldots,O_T,HMM) 
+      \\ &=P(I_n=i,I_{n+1}=j|O_1,O_2,\ldots,O_T,HMM)
       \\ &=\frac{P(O_1,O_2,\ldots,O_T|I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
       \\ &=\frac{P(O_1,\ldots,O_{n-1}|I_n=i,I_{n+1}=j,HMM)P(O_n,\ldots,O_T|O_1,\ldots,O_{n-1},I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
       \\ &=\frac{P(O_1,\ldots,O_{n-1}|I_n=i,HMM)P(O_n,\ldots,O_T|I_n=i,I_{n+1}=j,HMM)}{P(O_1,O_2,\ldots,O_T|HMM)}
@@ -347,7 +347,7 @@ $n$ and $n+1$ respectively, provided a HMM and observation sequence:
       \\ &=\frac{\alpha_n(i)P(O_n|I_n=i,HMM)P(I_{n+1}=j|I_n=i,HMM)\beta_{n+1}(j)}{\sum_{k \in S} \alpha_n(k) \beta_n(k)}
   \end{align*}
 
-> xi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> state -> Probability
+> xi :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Ord state, Ord symbol, Enum state, Bounded state) => Int -> HMM state symbol -> [symbol] -> state -> state -> Probability
 > xi n hmm@HMM{..} observations i j = forwardVariable n hmm observations i
 >                                   * hmmTransition i ?> j
 >                                   * backwardVariable (n+1) hmm observations j
@@ -357,15 +357,15 @@ $n$ and $n+1$ respectively, provided a HMM and observation sequence:
 Between `xi` and the above smoothing function, we can re-estimate HMM
 parameters:
 
-> step :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> HMM state symbol
+> step :: (Memoizable state, Memoizable symbol, Eq state, Ord state, Eq symbol, Ord symbol, Enum state, Bounded state) => HMM state symbol -> [symbol] -> HMM state symbol
 > step hmm@HMM{..} observations = hmm
->   { hmmStart = hmmStates <&> (,) <*> smooth 1 hmm observations
->   , hmmTransition = \from -> hmmStates <&> \to -> (to,)
->       $ argsum (\n -> xi n hmm observations from to) [0..t-1]
->       / argsum (\n -> smooth n hmm observations from) [0..t-1]
->   , hmmEmission = \from -> hmmSymbols <&> \emission -> (emission,)
->       $ argsum (\n -> b2i (observations!!n == emission) * smooth n hmm observations from) [0..t] 
->       / argsum (\n -> smooth n hmm observations from) [0..t]
+>   { hmmStart = hmmStates <~> (,) <*> smooth 1 hmm observations
+>   , hmmTransition = \from -> hmmStates <~> \to -> (to,)
+>       $ List.argsum (\n -> xi n hmm observations from to) [0..t-1]
+>       / List.argsum (\n -> smooth n hmm observations from) [0..t-1]
+>   , hmmEmission = \from -> hmmSymbols <~> \emission -> (emission,)
+>       $ List.argsum (\n -> b2i (observations!!n == emission) * smooth n hmm observations from) [0..t]
+>       / List.argsum (\n -> smooth n hmm observations from) [0..t]
 >   } where (t,b2i) = (length observations - 1, \case { True -> 1; False -> 0})
 
 The _Baum-Welch algorithm_ involves iteratively applying the above
@@ -376,18 +376,18 @@ improvements after this number of iterations, we cut off execution:
 
 > newtype Limit = Limit { limit :: Int }
 >
-> baumWelch' :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Int -> Int -> HMM state symbol -> [symbol] -> HMM state symbol
-> baumWelch' limit iterations hmm observations 
+> baumWelch' :: (Memoizable state, Memoizable symbol, Eq state, Ord state, Eq symbol, Ord symbol, Enum state, Bounded state) => Int -> Int -> HMM state symbol -> [symbol] -> HMM state symbol
+> baumWelch' limit iterations hmm observations
 >   | iterations >= limit = hmm
 >   | hmm' == hmm         = hmm
 >   | otherwise           = baumWelch' limit (succ iterations) hmm observations
 >   where hmm' = hmm `step` observations
 >
-> baumWelch :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Maybe Limit -> HMM state symbol -> [symbol] -> HMM state symbol
+> baumWelch :: (Memoizable state, Memoizable symbol, Eq state, Ord state, Eq symbol, Ord symbol, Enum state, Bounded state) => Maybe Limit -> HMM state symbol -> [symbol] -> HMM state symbol
 > baumWelch Nothing = flip (fixed . flip step)
-> baumWelch (limit . fromJust -> limit) = baumWelch' limit 0 
+> baumWelch (limit . fromJust -> limit) = baumWelch' limit 0
 >
-> train :: (Memoizable state, Memoizable symbol, Eq state, Eq symbol, Enum state, Bounded state) => Maybe Limit -> HMM state symbol -> [symbol] -> HMM state symbol
+> train :: (Memoizable state, Memoizable symbol, Eq state, Ord state, Eq symbol, Ord symbol, Enum state, Bounded state) => Maybe Limit -> HMM state symbol -> [symbol] -> HMM state symbol
 > train = baumWelch
 
 Note: the Baum-Welch procedure is not guaranteed to achieve a global
@@ -399,14 +399,14 @@ describes the observations. But what if we're missing initial
 parameters? In cases in which prior information is unavailable, a
 sensible option is to set the parameters to be uniform, that is:
 
-> uniformHMM :: [state] -> [symbol] -> HMM state symbol
+> uniformHMM :: Ord state => Ord symbol => Set state -> Set symbol -> HMM state symbol
 > uniformHMM states symbols = HMM
 >   { hmmStates     = states
 >   , hmmSymbols    = symbols
 >   , hmmStart      = uniform states
 >   , hmmTransition = const $ uniform states
 >   , hmmEmission   = const $ uniform symbols
->   } 
+>   }
 
 First-order HMMs are flexible enough to be used to represent simple Markov
 processes (without hidden states), as well as higher-order HMMs (in which we

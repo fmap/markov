@@ -1,19 +1,23 @@
-> {-# LANGUAGE LambdaCase, GeneralizedNewtypeDeriving, TemplateHaskell #-}
+> {-# LANGUAGE LambdaCase                 #-}
+> {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+> {-# LANGUAGE TemplateHaskell            #-}
+> {-# LANGUAGE OverloadedLists            #-}
 >
 > module Example.Doctor (doctor, Health(..), Symptom(..), generator, evaluator, inspector, trainer) where
 >
 > import AI.Markov.HMM (HMM(..), observe, evaluate, inspect, train)
 > import Data.Distribution (Probability)
 > import Data.Function.Memoize (deriveMemoizable)
+> import Data.Set (fromList)
 > import System.Random (StdGen, mkStdGen)
 
-This example has been cribbed wholesale from [Wikipedia's page on the 
+This example has been cribbed wholesale from [Wikipedia's page on the
 _Viterbi Algorithm_](https://en.wikipedia.org/wiki/Viterbi_algorithm).
 
 Consider a doctor, who's patients are either healthy or feverous:
 
 > data Health = Healthy | Fever
->   deriving (Eq, Enum, Bounded)
+>   deriving (Eq, Ord, Enum, Bounded)
 >
 > instance Show Health where
 >   show Healthy = "Healthy"
@@ -24,7 +28,7 @@ patients report one of three health conditions; either that they feel
 normal, cold, or dizzy:
 
 > data Symptom = Normal | Cold | Dizzy
->   deriving (Eq, Enum, Bounded)
+>   deriving (Eq, Ord, Enum, Bounded)
 >
 > instance Show Symptom where
 >   show Normal = "Normal"
@@ -44,19 +48,19 @@ Represented in Haskell:
 
 > doctor :: HMM Health Symptom
 > doctor = HMM
->   { hmmStates  = [Healthy, Fever]
->   , hmmSymbols = [Normal, Cold, Dizzy]
->   , hmmStart   = [(Healthy, 0.6), (Fever, 0.4)]
->   , hmmTransition = \case
+>   { hmmStates  = fromList [Healthy, Fever]
+>   , hmmSymbols = fromList [Normal, Cold, Dizzy]
+>   , hmmStart   = fromList [(Healthy, 0.6), (Fever, 0.4)]
+>   , hmmTransition = fromList . \case
 >       Healthy -> [(Healthy, 0.7), (Fever, 0.3)]
 >       Fever   -> [(Healthy, 0.4), (Fever, 0.6)]
->   , hmmEmission = \case
+>   , hmmEmission = fromList . \case
 >       Healthy -> [(Normal, 0.5), (Cold, 0.4), (Dizzy, 0.1)]
 >       Fever   -> [(Normal, 0.1), (Cold, 0.3), (Dizzy, 0.6)]
 >   }
 
-Drawing values from a Distribution depends upon the availability of a 
-random number generator; using the StdGen instance in System.Random, we 
+Drawing values from a Distribution depends upon the availability of a
+random number generator; using the StdGen instance in System.Random, we
 produce a deterministic value with the required constraint:
 
 > seed :: StdGen
