@@ -13,6 +13,7 @@ library
   exposed-modules: 
     AI.Markov.HMM,
     AI.Markov.MM,
+    AI.Markov.HOMM,
     Data.Distribution
   other-modules:
     Data.Function.Extras,

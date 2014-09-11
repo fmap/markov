@@ -10,7 +10,10 @@
 >   argmax,
 >   argsum,
 >   lookup,
->   sequence
+>   concat,
+>   sequence,
+>   lift2,
+>   lift3
 > ) where 
 >
 > import Prelude hiding (foldl, foldr, null, foldl1, sum, product, map, sequence, lookup, concat)
@@ -85,3 +88,15 @@ Specialisation of 'sequence' from Control.Monad.
 > sequence :: Ord a => [Set a] -> Set [a]
 > sequence = List.foldr sequence' (singleton [])
 >   where sequence' term = concat . map (flip map term . flip (:))
+
+Analogous to 'liftM2'..
+
+> lift2 :: Ord c => (a -> b -> c) -> Set a -> Set b -> Set c
+> lift2 fn a b = concat $ flip map a (flip map b . fn)
+
+Analagous to 'liftM4'..
+
+> lift3 :: Ord d => (a -> b -> c -> d) -> Set a -> Set b -> Set c -> Set d
+> lift3 fn a b c = concat . flip map a $ \a' ->
+>   concat . flip map b $ \b' ->
+>     flip map c $ fn a' b'
